@@ -202,9 +202,14 @@ async function readReservas() {
   const reservas = [];
   snapshot.forEach(doc => {
     const data = doc.data() || {};
+    const nomePiloto = data.nomePiloto || data.nome || '';
+    const responsavelPiloto = data.responsavelPiloto || data.nomeResponsavel || data.responsavel || '';
+
     reservas.push({
       id: doc.id,
-      nome: data.nome || '',
+      nome: nomePiloto,
+      nomePiloto,
+      responsavelPiloto,
       servico: data.servico || '',
       data: data.data || '',
       periodo: data.periodo || '',
@@ -338,7 +343,9 @@ async function moveReservaById(id, data, periodo) {
 
   return {
     id: updatedSnapshot.id,
-    nome: updated.nome || '',
+    nome: updated.nomePiloto || updated.nome || '',
+    nomePiloto: updated.nomePiloto || updated.nome || '',
+    responsavelPiloto: updated.responsavelPiloto || updated.nomeResponsavel || updated.responsavel || '',
     servico: updated.servico || '',
     data: updated.data || data,
     periodo: updated.periodo || periodo,
@@ -454,15 +461,22 @@ function validateReserva(payload) {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const phoneRegex = /^[0-9()+\-\s]{8,20}$/;
 
-  const nome = normalizeText(payload.nome);
+  const nomePiloto = normalizeText(payload.nomePiloto || payload.nome);
+  const responsavelPiloto = normalizeText(
+    payload.responsavelPiloto || payload.nomeResponsavel || payload.responsavel
+  );
   const servico = normalizeText(payload.servico);
   const data = normalizeText(payload.data);
   const periodo = normalizeText(payload.periodo);
   const email = normalizeText(payload.email).toLowerCase();
   const telefone = normalizeText(payload.telefone);
 
-  if (!nome || nome.length < 2 || nome.length > 120) {
-    errors.push('Campo nome deve ter entre 2 e 120 caracteres.');
+  if (!nomePiloto || nomePiloto.length < 2 || nomePiloto.length > 120) {
+    errors.push('Campo nomePiloto deve ter entre 2 e 120 caracteres.');
+  }
+
+  if (!responsavelPiloto || responsavelPiloto.length < 2 || responsavelPiloto.length > 120) {
+    errors.push('Campo responsavelPiloto deve ter entre 2 e 120 caracteres.');
   }
 
   if (!ALLOWED_SERVICES.has(servico)) {
@@ -488,7 +502,9 @@ function validateReserva(payload) {
   return {
     errors,
     reserva: {
-      nome,
+      nome: nomePiloto,
+      nomePiloto,
+      responsavelPiloto,
       servico,
       data,
       periodo,

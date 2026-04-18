@@ -296,9 +296,69 @@
       font-weight: 700;
     }
 
+    .period-options {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    .period-card {
+      flex: 1;
+      min-width: 120px;
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #ffffff;
+      color: var(--text);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    }
+
+    .period-card:hover {
+      border-color: #c2c8d4;
+      transform: translateY(-1px);
+      background: #f8f9fc;
+    }
+
+    .period-card.active {
+      border: 2px solid var(--accent);
+      background: #f2f5ff;
+      box-shadow: 0 10px 20px rgba(31, 47, 111, 0.14);
+      color: #000 !important;
+    }
+
+    .period-card:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .period-name {
+      font-size: 0.95rem;
+      font-weight: 700;
+    }
+
+    .period-icon {
+      font-size: 1.6rem;
+      margin-bottom: 8px;
+    }
+
+    .period-count {
+      margin-top: 4px;
+      font-size: 0.85rem;
+      color: #4f4f4f;
+    }
+
     .form-panel input,
     .form-panel select,
-    .form-panel button {
+    .form-panel button[type="submit"] {
       width: 100%;
       padding: 12px 14px;
       border-radius: 10px;
@@ -309,7 +369,7 @@
       font-family: inherit;
     }
 
-    .form-panel button {
+    .form-panel button[type="submit"] {
       background: var(--accent);
       color: white;
       border: none;
@@ -320,12 +380,12 @@
       letter-spacing: 0.01em;
     }
 
-    .form-panel button:hover {
+    .form-panel button[type="submit"]:hover {
       background: var(--accent-strong);
       transform: translateY(-1px);
     }
 
-    .form-panel button:disabled {
+    .form-panel button[type="submit"]:disabled {
       opacity: 0.6;
       cursor: not-allowed;
     }
@@ -397,13 +457,22 @@
 
         <div class="form-panel">
           <form id="reservaForm">
-            <label id="periodoField">Período
-              <select id="horario" required>
-                <option value="">Escolha um período</option>
-                <option value="manha">Manhã</option>
-                <option value="tarde">Tarde</option>
-              </select>
-            </label>
+            <div id="periodoField">
+              <label>Período</label>
+              <div class="period-options" id="periodOptions">
+                <button type="button" class="period-card" data-period="manha">
+                  <span class="period-icon">🌅</span>
+                  <span class="period-name">Manhã</span>
+                  <span class="period-count"></span>
+                </button>
+                <button type="button" class="period-card" data-period="tarde">
+                  <span class="period-icon">🌇</span>
+                  <span class="period-name">Tarde</span>
+                  <span class="period-count"></span>
+                </button>
+              </div>
+              <input type="hidden" id="horario" name="horario" required />
+            </div>
             <p class="feedback info" id="periodHint" aria-live="polite"></p>
 
             <label>Serviço</label>
@@ -424,8 +493,11 @@
             <input type="hidden" id="servico" name="servico" required />
             <input type="hidden" id="data" required />
 
-            <label>Nome do driver
-              <input type="text" id="nome" required />
+            <label>Nome do piloto
+              <input type="text" id="nomePiloto" required />
+            </label>
+            <label>Nome do responsável
+              <input type="text" id="responsavelPiloto" required />
             </label>
             <label>E-mail
               <input type="email" id="email" required />
@@ -478,13 +550,14 @@
     const selectedDateText = document.getElementById('selectedDate');
     const dataInput = document.getElementById('data');
     const serviceInput = document.getElementById('servico');
-    const periodSelect = document.getElementById('horario');
+    const periodInput = document.getElementById('horario');
     const periodField = document.getElementById('periodoField');
     const periodHint = document.getElementById('periodHint');
     const form = document.getElementById('reservaForm');
     const formFeedback = document.getElementById('formFeedback');
     const submitButton = form.querySelector('button[type="submit"]');
     const serviceCards = document.querySelectorAll('.service-card');
+    const periodCards = document.querySelectorAll('.period-card');
 
     function setFeedback(target, type, message) {
       target.className = `feedback ${type}`;
@@ -783,17 +856,33 @@
 
     function updatePeriodOptions() {
       const date = dataInput.value;
-      const options = periodSelect.querySelectorAll('option');
-      options.forEach(option => {
-        if (!option.value) {
-          return;
+      let selectedStillAvailable = false;
+
+      periodCards.forEach(card => {
+        const periodValue = card.dataset.period;
+        const count = date ? countPeriodReservations(date, periodValue) : 0;
+        const limit = date ? getPeriodCapacity(date, periodValue) : DEFAULT_MAX_RESERVATIONS_PER_PERIOD;
+        const disabled = Boolean(date) && (count >= limit || isBlocked(date, periodValue));
+        const countLabel = card.querySelector('.period-count');
+
+        if (countLabel) {
+          countLabel.textContent = count === 0 ? '' : `${count}/${limit}`;
         }
-        const periodData = bookingPeriods.find(period => period.value === option.value);
-        const count = date ? countPeriodReservations(date, option.value) : 0;
-        const limit = date ? getPeriodCapacity(date, option.value) : DEFAULT_MAX_RESERVATIONS_PER_PERIOD;
-        option.textContent = `${periodData.label} (${count}/${limit})`;
-        option.disabled = Boolean(date) && (count >= limit || isBlocked(date, option.value));
+
+        card.disabled = disabled;
+
+        if (periodInput.value === periodValue && !disabled) {
+          selectedStillAvailable = true;
+        }
+
+        if (disabled) {
+          card.classList.remove('active');
+        }
       });
+
+      if (!selectedStillAvailable) {
+        periodInput.value = '';
+      }
     }
 
     function updatePeriodVisibility() {
@@ -802,14 +891,15 @@
 
       if (showPeriod) {
         periodField.style.display = 'block';
-        periodSelect.required = true;
+        periodInput.required = true;
         periodHint.textContent = '';
         return;
       }
 
       periodField.style.display = 'none';
-      periodSelect.required = false;
-      periodSelect.value = '';
+      periodInput.required = false;
+      periodInput.value = '';
+      periodCards.forEach(card => card.classList.remove('active'));
 
       if (date) {
         periodHint.textContent = 'Periodo so aparece quando manha e tarde estiverem disponiveis no painel admin.';
@@ -825,7 +915,7 @@
       const tardeCapacity = getPeriodCapacity(dateValue, 'tarde');
       const morningBlocked = isBlocked(dateValue, 'manha');
       const afternoonBlocked = isBlocked(dateValue, 'tarde');
-      const selectedPeriod = periodSelect.value;
+      const selectedPeriod = periodInput.value;
       const hasSelectedDateAndPeriod = state.selectedDay === dateValue && (selectedPeriod === 'manha' || selectedPeriod === 'tarde');
 
       const showMorningPreview =
@@ -925,8 +1015,11 @@
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       const phoneRegex = /^[0-9()+\-\s]{8,20}$/;
 
-      if (!reserva.nome || reserva.nome.length < 2 || reserva.nome.length > 120) {
-        errors.push('Informe o nome do driver (2-120 caracteres).');
+      if (!reserva.nomePiloto || reserva.nomePiloto.length < 2 || reserva.nomePiloto.length > 120) {
+        errors.push('Informe o nome do piloto (2-120 caracteres).');
+      }
+      if (!reserva.responsavelPiloto || reserva.responsavelPiloto.length < 2 || reserva.responsavelPiloto.length > 120) {
+        errors.push('Informe o nome do responsável (2-120 caracteres).');
       }
       if (!serviceDetails[reserva.servico]) {
         errors.push('Selecione um servico valido.');
@@ -946,16 +1039,17 @@
       if (!phoneRegex.test(reserva.telefone || '')) {
         errors.push('Informe um telefone valido (8-20 caracteres).');
       }
-
       return errors;
     }
 
     function resetFormState() {
       form.reset();
       serviceInput.value = '';
+      periodInput.value = '';
       dataInput.value = '';
       state.selectedDay = null;
       serviceCards.forEach(card => card.classList.remove('active'));
+      periodCards.forEach(card => card.classList.remove('active'));
       renderSelectedInfo();
       renderCalendar();
       updatePeriodOptions();
@@ -969,16 +1063,20 @@
       }
 
       const reserva = {
-        nome: document.getElementById('nome').value.trim(),
+        nomePiloto: document.getElementById('nomePiloto').value.trim(),
+        responsavelPiloto: document.getElementById('responsavelPiloto').value.trim(),
         servico: serviceInput.value,
         data: dataInput.value,
-        periodo: periodSelect.value,
+        periodo: periodInput.value,
         email: document.getElementById('email').value.trim(),
         telefone: document.getElementById('telefone').value.trim()
       };
 
+      // Compatibilidade com visualizações antigas do painel admin.
+      reserva.nome = reserva.nomePiloto;
+
       // Compatibilidade com instancias antigas da API que ainda exigem o campo "contato".
-      reserva.contato = `${reserva.email} | ${reserva.telefone}`;
+      reserva.contato = `${reserva.nomePiloto} | ${reserva.responsavelPiloto}`;
 
       const validationErrors = validateReserva(reserva);
       if (validationErrors.length > 0) {
@@ -1026,7 +1124,18 @@
         });
       });
 
-      periodSelect.addEventListener('change', renderCalendar);
+      periodCards.forEach(card => {
+        card.addEventListener('click', () => {
+          if (card.disabled) {
+            return;
+          }
+          periodCards.forEach(item => item.classList.remove('active'));
+          card.classList.add('active');
+          periodInput.value = card.dataset.period;
+          renderCalendar();
+        });
+      });
+
       form.addEventListener('submit', handleSubmit);
     }
 

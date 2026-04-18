@@ -543,11 +543,11 @@
           <table>
             <thead>
               <tr>
-                <th>Cliente</th>
+                <th>Piloto</th>
+                <th>Responsável</th>
                 <th>Serviço</th>
                 <th>Reserva Atual</th>
-                <th>E-mail</th>
-                <th>Telefone</th>
+                <th>Contato</th>
                 <th>Mover Reserva</th>
                 <th>Excluir</th>
               </tr>
@@ -1226,8 +1226,11 @@
       sorted.forEach(reserva => {
         const row = document.createElement('tr');
 
-        const clientCell = document.createElement('td');
-        clientCell.textContent = reserva.nome;
+        const pilotoCell = document.createElement('td');
+        pilotoCell.textContent = reserva.nomePiloto || reserva.nome || '';
+
+        const responsavelCell = document.createElement('td');
+        responsavelCell.textContent = reserva.responsavelPiloto || reserva.nomeResponsavel || reserva.responsavel || '';
 
         const serviceCell = document.createElement('td');
         serviceCell.textContent = reserva.servico;
@@ -1235,11 +1238,8 @@
         const currentCell = document.createElement('td');
         currentCell.textContent = `${reserva.data} - ${formatPeriod(reserva.periodo)}`;
 
-        const emailCell = document.createElement('td');
-        emailCell.textContent = reserva.email || '';
-
-        const telefoneCell = document.createElement('td');
-        telefoneCell.textContent = reserva.telefone || '';
+        const contatoCell = document.createElement('td');
+        contatoCell.textContent = reserva.contato || [reserva.email, reserva.telefone].filter(Boolean).join(' | ');
 
         const moveCell = document.createElement('td');
         moveCell.appendChild(createMoveCell(reserva));
@@ -1274,11 +1274,11 @@
 
         deleteCell.appendChild(deleteBtn);
 
-        row.appendChild(clientCell);
+        row.appendChild(pilotoCell);
+        row.appendChild(responsavelCell);
         row.appendChild(serviceCell);
         row.appendChild(currentCell);
-        row.appendChild(emailCell);
-        row.appendChild(telefoneCell);
+        row.appendChild(contatoCell);
         row.appendChild(moveCell);
         row.appendChild(deleteCell);
 
