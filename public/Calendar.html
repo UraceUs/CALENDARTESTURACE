@@ -5,24 +5,32 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Book your Service</title>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap');
+
     :root {
-      --bg: #f9f2f2;
+      --bg: #ededf0;
       --panel: #ffffff;
-      --border: #e4d4d3;
-      --accent: #d4001d;
-      --accent-soft: #f7d7da;
-      --text: #222222;
-      --muted: #666666;
+      --border: #d8dce4;
+      --accent: #1f2f6f;
+      --accent-strong: #162353;
+      --accent-soft: #f2f5ff;
+      --danger: #e12430;
+      --danger-soft: #ffe9ec;
+      --text: #181b25;
+      --muted: #636b79;
     }
 
     * { box-sizing: border-box; }
     body {
       margin: 0;
       min-height: 100vh;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: var(--bg);
+      font-family: 'Sora', 'Trebuchet MS', sans-serif;
+      background:
+        linear-gradient(135deg, rgba(225, 36, 48, 0.06), transparent 26%),
+        linear-gradient(315deg, rgba(31, 47, 111, 0.06), transparent 32%),
+        var(--bg);
       color: var(--text);
-      padding: 20px;
+      padding: 22px;
     }
 
     .page {
@@ -35,11 +43,29 @@
       align-items: center;
       justify-content: space-between;
       margin-bottom: 18px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
     }
 
     .header h1 {
-      font-size: 1.8rem;
+      font-size: 1.7rem;
       margin: 0;
+      font-weight: 800;
+      letter-spacing: 0.01em;
+    }
+
+    .brand-wrap {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .logo-mark {
+      width: 190px;
+      height: auto;
+      flex: 0 0 auto;
+      display: block;
     }
 
     .months {
@@ -50,18 +76,19 @@
 
     .months button {
       border: 1px solid var(--border);
-      background: white;
+      background: #f8f9fb;
       color: var(--text);
-      padding: 6px 10px;
+      padding: 7px 12px;
       border-radius: 999px;
       cursor: pointer;
       font-size: 0.85rem;
+      font-weight: 600;
     }
 
     .months button.active {
-      background: var(--accent);
+      background: var(--danger);
       color: white;
-      border-color: var(--accent);
+      border-color: var(--danger);
     }
 
     .layout {
@@ -70,34 +97,27 @@
       gap: 18px;
     }
 
-    .small-box span {
-      display: block;
-      width: 100%;
-      height: 18px;
-      background: linear-gradient(90deg, #fff 0%, #f0f0f0 100%);
-      border-radius: 6px;
-    }
-
     .calendar-panel {
       background: var(--panel);
       border: 1px solid var(--border);
-      border-radius: 18px;
-      padding: 20px;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 14px 30px rgba(20, 26, 49, 0.06);
     }
 
     .week-days {
       display: grid;
       grid-template-columns: repeat(7, 1fr);
       gap: 8px;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 0.76rem;
+      font-weight: 700;
+      text-align: center;
     }
 
-    .week-days div,
-    .days-grid button {
+    .week-days div {
       text-align: center;
-      font-size: 0.8rem;
-      font-weight: 700;
-      color: var(--muted);
     }
 
     .days-grid {
@@ -107,80 +127,127 @@
     }
 
     .days-grid button {
-      min-height: 90px;
-      border: 1px solid transparent;
-      border-radius: 14px;
-      background: #f5f5f5;
-      padding: 10px;
+      width: 100%;
+      min-height: 86px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #fafbfc;
+      padding: 8px;
       cursor: pointer;
       text-align: left;
-      position: relative;
-      transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease, background 0.25s ease;
-      color: var(--muted);
+      transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+      color: var(--text);
+      font-size: 0.76rem;
+      font-weight: 400;
     }
 
     .days-grid button:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 16px 28px rgba(0, 0, 0, 0.12);
-      border-color: rgba(0, 0, 0, 0.08);
-      background: #f0f0f0;
+      transform: translateY(-1px);
+      box-shadow: 0 10px 18px rgba(20, 26, 49, 0.12);
+      border-color: #c2c8d4;
     }
 
     .days-grid button:disabled {
-      opacity: 0.45;
+      opacity: 0.55;
       cursor: not-allowed;
-      background: #e49696;
-      border-color: transparent;
-      color: var(--muted);
+      background: #f8fafc;
+      border-color: var(--border);
+      color: var(--text);
     }
 
     .days-grid button.active {
-      border-color: #0f5ea9;
-      box-shadow: 0 0 0 2px rgba(15, 94, 169, 0.35);
-      background: #e49696;
-      color: #000;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(31, 47, 111, 0.17);
+      background: var(--accent-soft);
     }
 
-    .days-grid button.active span,
-    .days-grid button.active small {
-      color: #000;
+    .days-grid button.blocked {
+      background: var(--danger-soft);
+      border-color: #efc5cc;
     }
 
-    .days-grid button span {
+    .day-number {
       display: block;
       font-size: 0.95rem;
       font-weight: 700;
-      margin-bottom: 6px;
+      margin-bottom: 4px;
     }
 
-    .days-grid button small {
+    .day-meta {
       display: block;
-      font-size: 0.74rem;
       color: var(--muted);
-      margin-top: 8px;
+      line-height: 1.2;
     }
-    .days-grid button.active small {
-      color: #000;
+
+    .day-capacity {
+      display: grid;
+      gap: 4px;
+      margin-top: 4px;
+    }
+
+    .period-row {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+
+    .period-label {
+      width: 10px;
+      font-weight: 700;
+    }
+
+    .slot-dots {
+      display: inline-flex;
+      gap: 4px;
+    }
+
+    .slot-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      border: 1px solid #90a4b8;
+      background: #ffffff;
+      display: inline-block;
+    }
+
+    .slot-dot.filled {
+      background: var(--danger);
+      border-color: var(--danger);
+    }
+
+    .slot-dot.selected {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .slot-dot.blocked {
+      background: var(--danger);
+      border-color: var(--danger);
+      opacity: 0.55;
     }
 
     .selected-date {
-      margin-top: 16px;
-      font-size: 0.95rem;
+      margin-top: 10px;
+      font-size: 0.9rem;
       color: var(--accent);
+      font-weight: 600;
     }
 
     .form-panel {
       margin-top: 20px;
       border: 1px solid var(--border);
-      border-radius: 18px;
+      border-radius: 12px;
       padding: 18px;
-      background: #fff7f7;
+      background: #fafbff;
     }
 
     .form-panel label {
       display: block;
       font-size: 0.95rem;
       margin-bottom: 10px;
+      font-weight: 700;
     }
 
     .service-options {
@@ -194,7 +261,7 @@
       min-width: 120px;
       padding: 14px;
       border: 1px solid var(--border);
-      border-radius: 16px;
+      border-radius: 12px;
       background: #ffffff;
       color: var(--text);
       cursor: pointer;
@@ -206,14 +273,14 @@
       transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
     }
     .service-card:hover {
-      border-color: var(--border);
+      border-color: #c2c8d4;
       transform: translateY(-1px);
-      background: #fff8f8;
+      background: #f8f9fc;
     }
     .service-card.active {
       border: 2px solid var(--accent);
-      background: #ffe6ec;
-      box-shadow: 0 8px 18px rgba(212, 0, 29, 0.14);
+      background: #f2f5ff;
+      box-shadow: 0 10px 20px rgba(31, 47, 111, 0.14);
       color: #000 !important;
     }
     .service-card.active .service-name,
@@ -239,6 +306,7 @@
       font-size: 0.95rem;
       margin-top: 6px;
       background: white;
+      font-family: inherit;
     }
 
     .form-panel button {
@@ -247,7 +315,14 @@
       border: none;
       margin-top: 16px;
       cursor: pointer;
-      transition: opacity 0.2s ease;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .form-panel button:hover {
+      background: var(--accent-strong);
+      transform: translateY(-1px);
     }
 
     .form-panel button:disabled {
@@ -270,26 +345,19 @@
     }
 
     .feedback.error {
-      color: #a30d0d;
-    }
-
-    .reservas {
-      margin-top: 22px;
-    }
-
-    .reserva {
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      background: #fff;
-      padding: 14px;
-      margin-bottom: 10px;
-    }
-
-    .reserva strong {
-      color: var(--accent);
+      color: var(--danger);
     }
 
     @media(max-width: 920px) {
+      .header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .logo-mark {
+        width: 150px;
+      }
+
       .layout {
         grid-template-columns: 1fr;
       }
@@ -302,9 +370,13 @@
 <body>
   <div class="page">
     <div class="header">
-      <div>
+      <div class="brand-wrap">
+        <svg class="logo-mark" viewBox="0 0 740 170" role="img" aria-label="Logo URACE" xmlns="http://www.w3.org/2000/svg">
+          <rect width="740" height="170" fill="none"/>
+          <text x="8" y="125" font-family="Sora, sans-serif" font-size="124" font-weight="800" fill="#e1121b" letter-spacing="3">URACE</text>
+          <circle cx="170" cy="78" r="22" fill="#1726f5"/>
+        </svg>
         <h1>Reserve seu serviço</h1>
-        <p><a href="admin/">Abrir painel admin</a></p>
       </div>
       <div class="months" id="months"></div>
     </div>
@@ -325,9 +397,15 @@
 
         <div class="form-panel">
           <form id="reservaForm">
-            <label>Nome do driver
-              <input type="text" id="nome" required />
+            <label id="periodoField">Período
+              <select id="horario" required>
+                <option value="">Escolha um período</option>
+                <option value="manha">Manhã</option>
+                <option value="tarde">Tarde</option>
+              </select>
             </label>
+            <p class="feedback info" id="periodHint" aria-live="polite"></p>
+
             <label>Serviço</label>
             <div class="service-options">
               <button type="button" class="service-card" data-service="Professional Coaching">
@@ -345,14 +423,10 @@
             </div>
             <input type="hidden" id="servico" name="servico" required />
             <input type="hidden" id="data" required />
-            <label id="periodoField">Período
-              <select id="horario" required>
-                <option value="">Escolha um período</option>
-                <option value="manha">Manhã</option>
-                <option value="tarde">Tarde</option>
-              </select>
+
+            <label>Nome do driver
+              <input type="text" id="nome" required />
             </label>
-            <p class="feedback info" id="periodHint" aria-live="polite"></p>
             <label>E-mail
               <input type="email" id="email" required />
             </label>
@@ -572,6 +646,33 @@
       );
     }
 
+    function createDotsHtml(occupiedCount, total, blocked, selectedPreview = false) {
+      const safeTotal = Math.max(0, Number(total) || 0);
+      const safeOccupied = Math.min(safeTotal, Math.max(0, Number(occupiedCount) || 0));
+      const showSelected = !blocked && selectedPreview && safeOccupied < safeTotal;
+      const dots = [];
+
+      for (let i = 0; i < safeTotal; i++) {
+        if (blocked) {
+          dots.push('<span class="slot-dot filled blocked"></span>');
+          continue;
+        }
+
+        if (showSelected && i === safeOccupied) {
+          dots.push('<span class="slot-dot selected"></span>');
+          continue;
+        }
+
+        const classes = ['slot-dot'];
+        if (i < safeOccupied) {
+          classes.push('filled');
+        }
+        dots.push(`<span class="${classes.join(' ')}"></span>`);
+      }
+
+      return dots.join('');
+    }
+
     function getDaysInMonth(year, month) {
       return new Date(year, month + 1, 0).getDate();
     }
@@ -718,30 +819,34 @@
     }
 
     function getDayButtonContent(day, dateValue) {
-      const isSelected = state.selectedDay === dateValue;
-      const isFull = isDayFullyBooked(dateValue);
-      let content = `<span>${day}</span>`;
+      const manhaCount = countPeriodReservations(dateValue, 'manha');
+      const tardeCount = countPeriodReservations(dateValue, 'tarde');
+      const manhaCapacity = getPeriodCapacity(dateValue, 'manha');
+      const tardeCapacity = getPeriodCapacity(dateValue, 'tarde');
+      const morningBlocked = isBlocked(dateValue, 'manha');
+      const afternoonBlocked = isBlocked(dateValue, 'tarde');
+      const selectedPeriod = periodSelect.value;
+      const hasSelectedDateAndPeriod = state.selectedDay === dateValue && (selectedPeriod === 'manha' || selectedPeriod === 'tarde');
 
-      if (isSelected) {
-        const service = serviceInput.value;
-        const period = periodSelect.value;
-        if (service && serviceDetails[service]) {
-          const details = serviceDetails[service];
-          content += `<small>${details.icon} ${details.label}</small>`;
-        }
-        if (period) {
-          const periodLabel = bookingPeriods.find(item => item.value === period)?.label || period;
-          content += `<small>${periodLabel}</small>`;
-        }
-      } else {
-        if (isFull) {
-          content += '<small>indisponivel</small>';
-        } else {
-          content += '<small>clique para agendar</small>';
-        }
-      }
+      const showMorningPreview =
+        hasSelectedDateAndPeriod &&
+        selectedPeriod === 'manha' &&
+        !morningBlocked &&
+        manhaCount < manhaCapacity;
 
-      return content;
+      const showAfternoonPreview =
+        hasSelectedDateAndPeriod &&
+        selectedPeriod === 'tarde' &&
+        !afternoonBlocked &&
+        tardeCount < tardeCapacity;
+
+      return (
+        `<span class="day-number">${day}</span>` +
+        `<span class="day-meta day-capacity">` +
+          `<span class="period-row"><span class="period-label">M</span><span class="slot-dots">${createDotsHtml(manhaCount, manhaCapacity, morningBlocked, showMorningPreview)}</span></span>` +
+          `<span class="period-row"><span class="period-label">T</span><span class="slot-dots">${createDotsHtml(tardeCount, tardeCapacity, afternoonBlocked, showAfternoonPreview)}</span></span>` +
+        `</span>`
+      );
     }
 
     function selectDay(dateValue) {
@@ -768,10 +873,17 @@
         const button = document.createElement('button');
         button.type = 'button';
         const dateValue = `${state.currentYear}-${String(state.currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const morningBlocked = isBlocked(dateValue, 'manha');
+        const afternoonBlocked = isBlocked(dateValue, 'tarde');
         const isFull = isDayFullyBooked(dateValue);
 
         button.innerHTML = getDayButtonContent(day, dateValue);
         button.disabled = isFull;
+
+        if (morningBlocked || afternoonBlocked) {
+          button.classList.add('blocked');
+        }
+
         if (state.selectedDay === dateValue) {
           button.classList.add('active');
         }
@@ -918,6 +1030,14 @@
       form.addEventListener('submit', handleSubmit);
     }
 
+    function refreshCalendarUi() {
+      renderMonthButtons();
+      renderCalendar();
+      renderSelectedInfo();
+      updatePeriodOptions();
+      updatePeriodVisibility();
+    }
+
     async function init() {
       setFeedback(formFeedback, 'info', 'Conectando ao servidor...');
 
@@ -933,22 +1053,14 @@
         state.capacidade = capacidade;
         rebuildPeriodIndex();
         rebuildBlockedIndex(disponibilidade);
-        renderMonthButtons();
-        renderCalendar();
-        renderSelectedInfo();
-        updatePeriodOptions();
-        updatePeriodVisibility();
+        refreshCalendarUi();
         if (hasApi) {
           setFeedback(formFeedback, 'info', '');
         } else {
           setFeedback(formFeedback, 'error', 'API indisponivel. Usando modo local neste navegador.');
         }
       } catch (error) {
-        renderMonthButtons();
-        renderCalendar();
-        renderSelectedInfo();
-        updatePeriodOptions();
-        updatePeriodVisibility();
+        refreshCalendarUi();
         setFeedback(formFeedback, 'error', toUserMessage(error, 'Erro ao carregar reservas.'));
       }
 
