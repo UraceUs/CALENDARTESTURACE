@@ -1,0 +1,1299 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Painel Admin - Reservas</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --card: #ffffff;
+      --line: #d7dde3;
+      --text: #1f2933;
+      --muted: #5c6773;
+      --brand: #0f5ea9;
+      --danger: #a0142f;
+      --success: #0d6a3a;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: radial-gradient(circle at top right, #e8eff8, #f4f6f8 40%);
+      color: var(--text);
+      padding: 20px;
+    }
+
+    .page {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 1.7rem;
+    }
+
+    .header a {
+      color: var(--brand);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px;
+    }
+
+    .calendar-card {
+      margin-bottom: 16px;
+    }
+
+    .calendar-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .months {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .months button {
+      width: auto;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--text);
+      font-size: 0.8rem;
+    }
+
+    .months button.active {
+      background: var(--brand);
+      border-color: var(--brand);
+      color: #fff;
+    }
+
+    .week-days {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 8px;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 0.76rem;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    .days-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 8px;
+    }
+
+    .days-grid button {
+      width: 100%;
+      min-height: 86px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: #f8fafc;
+      text-align: left;
+      padding: 8px;
+      color: var(--text);
+      font-size: 0.76rem;
+      transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+    }
+
+    .days-grid button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.09);
+      border-color: #bcc8d4;
+    }
+
+    .days-grid button.active {
+      border-color: var(--brand);
+      box-shadow: 0 0 0 2px rgba(15, 94, 169, 0.18);
+      background: #eef5fd;
+    }
+
+    .days-grid button.blocked {
+      background: #fce8ec;
+      border-color: #ebc2cd;
+    }
+
+    .day-number {
+      display: block;
+      font-size: 0.94rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .day-meta {
+      display: block;
+      color: var(--muted);
+      line-height: 1.2;
+    }
+
+    .day-capacity {
+      display: grid;
+      gap: 4px;
+      margin-top: 4px;
+    }
+
+    .period-row {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+
+    .period-label {
+      width: 10px;
+      font-weight: 700;
+    }
+
+    .slot-dots {
+      display: inline-flex;
+      gap: 4px;
+    }
+
+    .slot-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      border: 1px solid #90a4b8;
+      background: #ffffff;
+      display: inline-block;
+    }
+
+    .slot-dot.filled {
+      background: #0f5ea9;
+      border-color: #0f5ea9;
+    }
+
+    .slot-dot.blocked {
+      background: #e9edf2;
+      border-color: #c6d0da;
+    }
+
+    .selected-day-note {
+      margin-top: 10px;
+      color: var(--brand);
+      font-size: 0.9rem;
+      min-height: 1.2em;
+    }
+
+    h2 {
+      margin: 0 0 12px;
+      font-size: 1.1rem;
+    }
+
+    h3 {
+      margin: 14px 0 10px;
+      font-size: 1rem;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 10px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    input,
+    select,
+    button {
+      width: 100%;
+      margin-top: 6px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 0.92rem;
+      background: #fff;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    .btn-primary {
+      background: var(--brand);
+      border-color: var(--brand);
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .btn-danger {
+      background: var(--danger);
+      border-color: var(--danger);
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .feedback {
+      min-height: 1.2em;
+      margin-top: 8px;
+      font-size: 0.9rem;
+    }
+
+    .feedback.error {
+      color: var(--danger);
+    }
+
+    .feedback.success {
+      color: var(--success);
+    }
+
+    .list {
+      margin-top: 12px;
+      max-height: 260px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px;
+      background: #fafbfc;
+    }
+
+    .list-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      background: #fff;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .list-item:last-child {
+      margin-bottom: 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--muted);
+      font-weight: 700;
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .move-controls {
+      display: grid;
+      grid-template-columns: 1fr 100px 100px;
+      gap: 6px;
+      align-items: center;
+      min-width: 320px;
+    }
+
+    .inline-feedback {
+      color: var(--muted);
+      font-size: 0.8rem;
+      margin-top: 4px;
+    }
+
+    .btn-trash {
+      width: auto;
+      min-width: 44px;
+      padding: 8px 10px;
+      border: 1px solid #d8a8b3;
+      border-radius: 8px;
+      background: #fff1f5;
+      color: var(--danger);
+      font-weight: 700;
+    }
+
+    .btn-trash:hover {
+      background: #ffe3ea;
+    }
+
+    .small-note {
+      margin: 2px 0 8px;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    @media (max-width: 980px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .move-controls {
+        grid-template-columns: 1fr;
+        min-width: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="header">
+      <h1>Painel Administrativo</h1>
+      <a href="Calendar.html">Ir para página do cliente</a>
+    </div>
+
+    <section class="card calendar-card">
+      <div class="calendar-head">
+        <h2>Calendário de Operação</h2>
+        <div class="months" id="adminMonths"></div>
+      </div>
+
+      <div class="week-days">
+        <div>SEG</div>
+        <div>TER</div>
+        <div>QUA</div>
+        <div>QUI</div>
+        <div>SEX</div>
+        <div>SAB</div>
+        <div>DOM</div>
+      </div>
+
+      <div class="days-grid" id="adminDaysGrid"></div>
+      <p class="selected-day-note" id="selectedDayNote"></p>
+    </section>
+
+    <div class="grid">
+      <section class="card">
+        <h2>Disponibilidade do Calendário</h2>
+        <form id="availabilityForm">
+          <label>Data
+            <input type="date" id="availabilityDate" required />
+          </label>
+
+          <label>Período
+            <select id="availabilityPeriod" required>
+              <option value="manha">Manhã</option>
+              <option value="tarde">Tarde</option>
+              <option value="all">Dia todo</option>
+            </select>
+          </label>
+
+          <div class="row">
+            <button type="button" class="btn-danger" id="blockBtn">Bloquear</button>
+            <button type="button" id="unblockBtn">Desbloquear</button>
+          </div>
+
+          <p class="feedback" id="availabilityFeedback" aria-live="polite"></p>
+        </form>
+
+        <div class="list" id="availabilityList"></div>
+
+        <h3>Ajuste de Vagas por Dia</h3>
+        <p class="small-note">Selecione data, período e quantas vagas extras deseja adicionar.</p>
+        <form id="capacityForm">
+          <label>Data
+            <input type="date" id="capacityDate" required />
+          </label>
+
+          <label>Período
+            <select id="capacityPeriod" required>
+              <option value="manha">Manhã</option>
+              <option value="tarde">Tarde</option>
+            </select>
+          </label>
+
+          <label>Quantidade de vagas extras
+            <input type="number" id="capacityAmount" min="1" max="20" value="1" required />
+          </label>
+
+          <button type="button" class="btn-primary" id="addCapacityBtn">Adicionar vagas</button>
+          <p class="feedback" id="capacityFeedback" aria-live="polite"></p>
+        </form>
+
+        <div class="list" id="capacityList"></div>
+      </section>
+
+      <section class="card">
+        <h2>Reservas (Admin)</h2>
+        <p class="feedback" id="reservationsFeedback" aria-live="polite"></p>
+        <div style="overflow:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th>Serviço</th>
+                <th>Reserva Atual</th>
+                <th>E-mail</th>
+                <th>Telefone</th>
+                <th>Mover Reserva</th>
+                <th>Excluir</th>
+              </tr>
+            </thead>
+            <tbody id="reservationTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const DEFAULT_MAX_RESERVATIONS_PER_PERIOD = 4;
+
+    const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+    const bookingPeriods = {
+      manha: 'Manhã',
+      tarde: 'Tarde',
+      all: 'Dia todo'
+    };
+
+    const state = {
+      reservas: [],
+      disponibilidade: [],
+      capacidade: [],
+      currentMonth: new Date().getMonth(),
+      currentYear: new Date().getFullYear(),
+      selectedDay: '',
+      apiBase: '',
+      storageMode: 'api'
+    };
+
+    const LOCAL_RESERVAS_KEY = 'calendar_reservas';
+    const LOCAL_DISPONIBILIDADE_KEY = 'calendar_disponibilidade';
+    const LOCAL_CAPACIDADE_KEY = 'calendar_capacidade';
+
+    const adminMonths = document.getElementById('adminMonths');
+    const adminDaysGrid = document.getElementById('adminDaysGrid');
+    const selectedDayNote = document.getElementById('selectedDayNote');
+
+    const availabilityDate = document.getElementById('availabilityDate');
+    const availabilityPeriod = document.getElementById('availabilityPeriod');
+    const blockBtn = document.getElementById('blockBtn');
+    const unblockBtn = document.getElementById('unblockBtn');
+    const availabilityFeedback = document.getElementById('availabilityFeedback');
+    const availabilityList = document.getElementById('availabilityList');
+    const capacityDate = document.getElementById('capacityDate');
+    const capacityPeriod = document.getElementById('capacityPeriod');
+    const capacityAmount = document.getElementById('capacityAmount');
+    const addCapacityBtn = document.getElementById('addCapacityBtn');
+    const capacityFeedback = document.getElementById('capacityFeedback');
+    const capacityList = document.getElementById('capacityList');
+
+    const reservationsFeedback = document.getElementById('reservationsFeedback');
+    const reservationTableBody = document.getElementById('reservationTableBody');
+
+    function setFeedback(target, type, message) {
+      target.className = `feedback ${type}`;
+      target.textContent = message || '';
+    }
+
+    function getApiCandidates() {
+      const origin = window.location.origin;
+      const host = window.location.hostname || 'localhost';
+      const candidates = [];
+
+      if (window.location.port === '3000') {
+        candidates.push(origin);
+      }
+
+      candidates.push(`http://${host}:3000`);
+      candidates.push('http://localhost:3000');
+      candidates.push('http://127.0.0.1:3000');
+
+      return [...new Set(candidates)];
+    }
+
+    function apiUrl(path) {
+      return `${state.apiBase}${path}`;
+    }
+
+    async function canReachApi(base) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const response = await fetch(`${base}/api/reservas`, {
+          method: 'GET',
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        return response.ok;
+      } catch (error) {
+        return false;
+      }
+    }
+
+    async function resolveApiBase() {
+      const candidates = getApiCandidates();
+      for (const base of candidates) {
+        const reachable = await canReachApi(base);
+        if (reachable) {
+          state.apiBase = base;
+          state.storageMode = 'api';
+          return true;
+        }
+      }
+
+      state.apiBase = '';
+      state.storageMode = 'local';
+      return false;
+    }
+
+    async function ensureApiBase(force = false) {
+      if (state.storageMode === 'local' && !force) {
+        return false;
+      }
+      if (state.apiBase && !force) {
+        return true;
+      }
+      return await resolveApiBase();
+    }
+
+    async function fetchWithApi(path, options) {
+      const hasApi = await ensureApiBase(false);
+      if (!hasApi) {
+        throw new Error('API_UNAVAILABLE');
+      }
+
+      try {
+        return await fetch(apiUrl(path), options);
+      } catch (error) {
+        if (error && error.name === 'TypeError') {
+          const recovered = await ensureApiBase(true);
+          if (!recovered) {
+            throw new Error('API_UNAVAILABLE');
+          }
+          return await fetch(apiUrl(path), options);
+        }
+        throw error;
+      }
+    }
+
+    function readLocalArray(key) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) {
+          return [];
+        }
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (error) {
+        return [];
+      }
+    }
+
+    function writeLocalArray(key, value) {
+      localStorage.setItem(key, JSON.stringify(Array.isArray(value) ? value : []));
+    }
+
+    function formatPeriod(period) {
+      return bookingPeriods[period] || period;
+    }
+
+    function periodKey(date, period) {
+      return `${date}|${period}`;
+    }
+
+    function normalizeDateInput(dateValue) {
+      if (typeof dateValue !== 'string') {
+        return '';
+      }
+
+      const value = dateValue.trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return value;
+      }
+
+      const brMatch = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      if (brMatch) {
+        return `${brMatch[3]}-${brMatch[2]}-${brMatch[1]}`;
+      }
+
+      return value;
+    }
+
+    function getPeriodCapacity(date, period) {
+      const custom = state.capacidade.find(item => item && item.data === date && item.periodo === period);
+      const parsed = custom ? Number(custom.vagas) : null;
+
+      if (Number.isInteger(parsed) && parsed > 0) {
+        return parsed;
+      }
+
+      return DEFAULT_MAX_RESERVATIONS_PER_PERIOD;
+    }
+
+    function getDaysInMonth(year, month) {
+      return new Date(year, month + 1, 0).getDate();
+    }
+
+    function countReservationsFor(date, period) {
+      return state.reservas.filter(item => item && item.data === date && item.periodo === period).length;
+    }
+
+    function isPeriodBlocked(date, period) {
+      return state.disponibilidade.some(item => {
+        if (!item || item.data !== date) {
+          return false;
+        }
+        return item.periodo === 'all' || item.periodo === period;
+      });
+    }
+
+    function isDateBlocked(date) {
+      return isPeriodBlocked(date, 'manha') || isPeriodBlocked(date, 'tarde');
+    }
+
+    function updateSelectedDayNote() {
+      if (!state.selectedDay) {
+        selectedDayNote.textContent = 'Clique em um dia para preencher a data no painel de disponibilidade.';
+        return;
+      }
+
+      const morningCount = countReservationsFor(state.selectedDay, 'manha');
+      const afternoonCount = countReservationsFor(state.selectedDay, 'tarde');
+      const morningCapacity = getPeriodCapacity(state.selectedDay, 'manha');
+      const afternoonCapacity = getPeriodCapacity(state.selectedDay, 'tarde');
+      const morningBlocked = isPeriodBlocked(state.selectedDay, 'manha');
+      const afternoonBlocked = isPeriodBlocked(state.selectedDay, 'tarde');
+
+      selectedDayNote.textContent =
+        `Dia ${state.selectedDay} | Manhã: ${morningCount}/${morningCapacity}${morningBlocked ? ' (bloqueado)' : ''} | ` +
+        `Tarde: ${afternoonCount}/${afternoonCapacity}${afternoonBlocked ? ' (bloqueado)' : ''}`;
+    }
+
+    function createDotsHtml(occupiedCount, total, blocked) {
+      const safeTotal = Math.max(0, Number(total) || 0);
+      const safeOccupied = Math.min(safeTotal, Math.max(0, Number(occupiedCount) || 0));
+      let html = '';
+
+      for (let i = 0; i < safeTotal; i++) {
+        if (blocked) {
+          html += '<span class="slot-dot blocked"></span>';
+          continue;
+        }
+
+        const filled = i < safeOccupied ? ' filled' : '';
+        html += `<span class="slot-dot${filled}"></span>`;
+      }
+
+      return html;
+    }
+
+    function renderCalendarMonths() {
+      adminMonths.innerHTML = '';
+
+      monthNames.forEach((monthName, index) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = monthName;
+        button.className = index === state.currentMonth ? 'active' : '';
+        button.addEventListener('click', () => {
+          state.currentMonth = index;
+          renderCalendarMonths();
+          renderAdminCalendar();
+        });
+        adminMonths.appendChild(button);
+      });
+    }
+
+    function renderAdminCalendar() {
+      adminDaysGrid.innerHTML = '';
+      const firstDay = new Date(state.currentYear, state.currentMonth, 1).getDay();
+      const dayOffset = (firstDay + 6) % 7;
+      const totalDays = getDaysInMonth(state.currentYear, state.currentMonth);
+
+      const fragment = document.createDocumentFragment();
+
+      for (let i = 0; i < dayOffset; i++) {
+        fragment.appendChild(document.createElement('div'));
+      }
+
+      for (let day = 1; day <= totalDays; day++) {
+        const date = `${state.currentYear}-${String(state.currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const manhaCount = countReservationsFor(date, 'manha');
+        const tardeCount = countReservationsFor(date, 'tarde');
+        const manhaCapacity = getPeriodCapacity(date, 'manha');
+        const tardeCapacity = getPeriodCapacity(date, 'tarde');
+        const morningBlocked = isPeriodBlocked(date, 'manha');
+        const afternoonBlocked = isPeriodBlocked(date, 'tarde');
+        const blocked = isDateBlocked(date);
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.innerHTML =
+          `<span class="day-number">${day}</span>` +
+          `<span class="day-meta day-capacity">` +
+            `<span class="period-row"><span class="period-label">M</span><span class="slot-dots">${createDotsHtml(manhaCount, manhaCapacity, morningBlocked)}</span></span>` +
+            `<span class="period-row"><span class="period-label">T</span><span class="slot-dots">${createDotsHtml(tardeCount, tardeCapacity, afternoonBlocked)}</span></span>` +
+          `</span>`;
+
+        if (blocked) {
+          button.classList.add('blocked');
+        }
+
+        if (state.selectedDay === date) {
+          button.classList.add('active');
+        }
+
+        button.addEventListener('click', () => {
+          state.selectedDay = date;
+          availabilityDate.value = date;
+          capacityDate.value = date;
+          renderAdminCalendar();
+          updateSelectedDayNote();
+        });
+
+        fragment.appendChild(button);
+      }
+
+      adminDaysGrid.appendChild(fragment);
+    }
+
+    async function parseApiError(response, fallback) {
+      try {
+        const body = await response.json();
+        if (body && body.error && Array.isArray(body.error.details) && body.error.details.length > 0) {
+          return body.error.details[0];
+        }
+        if (body && body.error && body.error.message) {
+          return body.error.message;
+        }
+      } catch (error) {
+        console.error('Erro ao ler retorno da API:', error);
+      }
+      return fallback;
+    }
+
+    async function fetchReservas() {
+      if (state.storageMode === 'local') {
+        return readLocalArray(LOCAL_RESERVAS_KEY);
+      }
+
+      const response = await fetchWithApi('/api/reservas');
+      if (!response.ok) {
+        throw new Error(await parseApiError(response, 'Erro ao carregar reservas.'));
+      }
+      const data = await response.json();
+      return Array.isArray(data) ? data : [];
+    }
+
+    async function fetchDisponibilidade() {
+      if (state.storageMode === 'local') {
+        return readLocalArray(LOCAL_DISPONIBILIDADE_KEY);
+      }
+
+      const response = await fetchWithApi('/api/disponibilidade');
+      if (!response.ok) {
+        throw new Error(await parseApiError(response, 'Erro ao carregar disponibilidade.'));
+      }
+      const data = await response.json();
+      return Array.isArray(data) ? data : [];
+    }
+
+    async function fetchCapacidade() {
+      if (state.storageMode === 'local') {
+        return readLocalArray(LOCAL_CAPACIDADE_KEY);
+      }
+
+      const response = await fetchWithApi('/api/capacidade');
+      if (!response.ok) {
+        throw new Error(await parseApiError(response, 'Erro ao carregar capacidade.'));
+      }
+      const data = await response.json();
+      return Array.isArray(data) ? data : [];
+    }
+
+    async function saveDisponibilidade(payload) {
+      if (state.storageMode === 'local') {
+        const disponibilidade = readLocalArray(LOCAL_DISPONIBILIDADE_KEY);
+        const index = disponibilidade.findIndex(
+          item => item && item.data === payload.data && item.periodo === payload.periodo
+        );
+
+        if (payload.bloqueado) {
+          if (index === -1) {
+            disponibilidade.push({ data: payload.data, periodo: payload.periodo });
+          }
+        } else if (index !== -1) {
+          disponibilidade.splice(index, 1);
+        }
+
+        writeLocalArray(LOCAL_DISPONIBILIDADE_KEY, disponibilidade);
+        return disponibilidade;
+      }
+
+      const response = await fetchWithApi('/api/disponibilidade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error(await parseApiError(response, 'Erro ao salvar disponibilidade.'));
+      }
+
+      const result = await response.json();
+      return Array.isArray(result.disponibilidade) ? result.disponibilidade : [];
+    }
+
+    async function addCapacity(payload) {
+      if (state.storageMode === 'local') {
+        const capacidades = readLocalArray(LOCAL_CAPACIDADE_KEY);
+        const targetKey = periodKey(payload.data, payload.periodo);
+        const targetIndex = capacidades.findIndex(item => item && periodKey(item.data, item.periodo) === targetKey);
+        const currentValue = targetIndex === -1 ? DEFAULT_MAX_RESERVATIONS_PER_PERIOD : Number(capacidades[targetIndex].vagas);
+        const nextValue = (Number.isInteger(currentValue) && currentValue > 0 ? currentValue : DEFAULT_MAX_RESERVATIONS_PER_PERIOD) + payload.quantidade;
+
+        if (targetIndex === -1) {
+          capacidades.push({ data: payload.data, periodo: payload.periodo, vagas: nextValue });
+        } else {
+          capacidades[targetIndex] = { ...capacidades[targetIndex], vagas: nextValue };
+        }
+
+        writeLocalArray(LOCAL_CAPACIDADE_KEY, capacidades);
+        return capacidades;
+      }
+
+      const response = await fetchWithApi('/api/capacidade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // Compatibilidade com backend antigo que usa "extras" no lugar de "quantidade".
+        body: JSON.stringify({
+          ...payload,
+          extras: payload.quantidade
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(await parseApiError(response, 'Erro ao salvar capacidade.'));
+      }
+
+      const result = await response.json();
+      if (Array.isArray(result.capacidades)) {
+        return result.capacidades;
+      }
+
+      return fetchCapacidade();
+    }
+
+    async function moveReserva(id, payload) {
+      if (state.storageMode === 'local') {
+        const reservas = readLocalArray(LOCAL_RESERVAS_KEY);
+        const targetIndex = reservas.findIndex(item => item && item.id === id);
+
+        if (targetIndex === -1) {
+          throw new Error('Reserva nao encontrada.');
+        }
+
+        const updated = {
+          ...reservas[targetIndex],
+          data: payload.data,
+          periodo: payload.periodo,
+          movedAt: new Date().toISOString()
+        };
+
+        reservas[targetIndex] = updated;
+        writeLocalArray(LOCAL_RESERVAS_KEY, reservas);
+        return updated;
+      }
+
+      const response = await fetchWithApi(`/api/reservas/${encodeURIComponent(id)}/move`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error(await parseApiError(response, 'Erro ao mover reserva.'));
+      }
+
+      const result = await response.json();
+      return result.reserva;
+    }
+
+    async function deleteReserva(id) {
+      if (state.storageMode === 'local') {
+        const reservas = readLocalArray(LOCAL_RESERVAS_KEY);
+        const targetIndex = reservas.findIndex(item => item && item.id === id);
+        if (targetIndex === -1) {
+          throw new Error('Reserva nao encontrada.');
+        }
+        reservas.splice(targetIndex, 1);
+        writeLocalArray(LOCAL_RESERVAS_KEY, reservas);
+        return true;
+      }
+
+      const response = await fetchWithApi(`/api/reservas/${encodeURIComponent(id)}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) {
+        throw new Error(await parseApiError(response, 'Erro ao excluir reserva.'));
+      }
+
+      return true;
+    }
+
+    function renderDisponibilidade() {
+      availabilityList.innerHTML = '';
+
+      if (state.disponibilidade.length === 0) {
+        const empty = document.createElement('p');
+        empty.textContent = 'Nenhum bloqueio ativo.';
+        availabilityList.appendChild(empty);
+        return;
+      }
+
+      const sorted = [...state.disponibilidade].sort((a, b) => {
+        const dateCompare = String(a.data).localeCompare(String(b.data));
+        if (dateCompare !== 0) {
+          return dateCompare;
+        }
+        return String(a.periodo).localeCompare(String(b.periodo));
+      });
+
+      sorted.forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'list-item';
+
+        const text = document.createElement('span');
+        text.textContent = `${item.data} - ${formatPeriod(item.periodo)}`;
+
+        const btn = document.createElement('button');
+        btn.textContent = 'Remover';
+        btn.addEventListener('click', async () => {
+          try {
+            setFeedback(availabilityFeedback, '', '');
+            state.disponibilidade = await saveDisponibilidade({
+              data: item.data,
+              periodo: item.periodo,
+              bloqueado: false
+            });
+            renderDisponibilidade();
+            setFeedback(availabilityFeedback, 'success', 'Bloqueio removido com sucesso.');
+          } catch (error) {
+            setFeedback(availabilityFeedback, 'error', error.message || 'Falha ao remover bloqueio.');
+          }
+        });
+
+        row.appendChild(text);
+        row.appendChild(btn);
+        availabilityList.appendChild(row);
+      });
+    }
+
+    function renderCapacidade() {
+      capacityList.innerHTML = '';
+
+      if (!state.capacidade.length) {
+        const empty = document.createElement('p');
+        empty.textContent = `Sem ajuste manual de vagas. Limite padrão: ${DEFAULT_MAX_RESERVATIONS_PER_PERIOD} por período.`;
+        capacityList.appendChild(empty);
+        return;
+      }
+
+      const sorted = [...state.capacidade].sort((a, b) => {
+        const dateCompare = String(a.data).localeCompare(String(b.data));
+        if (dateCompare !== 0) {
+          return dateCompare;
+        }
+        return String(a.periodo).localeCompare(String(b.periodo));
+      });
+
+      sorted.forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'list-item';
+
+        const text = document.createElement('span');
+        text.textContent = `${item.data} - ${formatPeriod(item.periodo)}: ${item.vagas} vagas`;
+
+        row.appendChild(text);
+        capacityList.appendChild(row);
+      });
+    }
+
+    function createMoveCell(reserva) {
+      const wrapper = document.createElement('div');
+
+      const controls = document.createElement('div');
+      controls.className = 'move-controls';
+
+      const dateInput = document.createElement('input');
+      dateInput.type = 'date';
+      dateInput.value = reserva.data;
+
+      const periodSelect = document.createElement('select');
+      Object.entries(bookingPeriods)
+        .filter(([key]) => key !== 'all')
+        .forEach(([value, label]) => {
+          const option = document.createElement('option');
+          option.value = value;
+          option.textContent = label;
+          if (value === reserva.periodo) {
+            option.selected = true;
+          }
+          periodSelect.appendChild(option);
+        });
+
+      const moveBtn = document.createElement('button');
+      moveBtn.textContent = 'Mover';
+      moveBtn.className = 'btn-primary';
+
+      const lineFeedback = document.createElement('p');
+      lineFeedback.className = 'inline-feedback';
+
+      moveBtn.addEventListener('click', async () => {
+        try {
+          moveBtn.disabled = true;
+          lineFeedback.textContent = 'Movendo...';
+
+          const updated = await moveReserva(reserva.id, {
+            data: dateInput.value,
+            periodo: periodSelect.value
+          });
+
+          const index = state.reservas.findIndex(item => item.id === reserva.id);
+          if (index !== -1) {
+            state.reservas[index] = updated;
+          }
+
+          renderReservas();
+          renderAdminCalendar();
+          updateSelectedDayNote();
+          lineFeedback.textContent = 'Reserva movida com sucesso.';
+          setFeedback(reservationsFeedback, 'success', 'Movimentação concluída.');
+        } catch (error) {
+          lineFeedback.textContent = error.message || 'Falha ao mover.';
+          setFeedback(reservationsFeedback, 'error', error.message || 'Falha ao mover reserva.');
+        } finally {
+          moveBtn.disabled = false;
+        }
+      });
+
+      controls.appendChild(dateInput);
+      controls.appendChild(periodSelect);
+      controls.appendChild(moveBtn);
+
+      wrapper.appendChild(controls);
+      wrapper.appendChild(lineFeedback);
+      return wrapper;
+    }
+
+    function renderReservas() {
+      reservationTableBody.innerHTML = '';
+
+      if (state.reservas.length === 0) {
+        const row = document.createElement('tr');
+        const cell = document.createElement('td');
+        cell.colSpan = 7;
+        cell.textContent = 'Nenhuma reserva cadastrada.';
+        row.appendChild(cell);
+        reservationTableBody.appendChild(row);
+        return;
+      }
+
+      const sorted = [...state.reservas].sort((a, b) => {
+        const dateCompare = String(a.data).localeCompare(String(b.data));
+        if (dateCompare !== 0) {
+          return dateCompare;
+        }
+        return String(a.periodo).localeCompare(String(b.periodo));
+      });
+
+      sorted.forEach(reserva => {
+        const row = document.createElement('tr');
+
+        const clientCell = document.createElement('td');
+        clientCell.textContent = reserva.nome;
+
+        const serviceCell = document.createElement('td');
+        serviceCell.textContent = reserva.servico;
+
+        const currentCell = document.createElement('td');
+        currentCell.textContent = `${reserva.data} - ${formatPeriod(reserva.periodo)}`;
+
+        const emailCell = document.createElement('td');
+        emailCell.textContent = reserva.email || '';
+
+        const telefoneCell = document.createElement('td');
+        telefoneCell.textContent = reserva.telefone || '';
+
+        const moveCell = document.createElement('td');
+        moveCell.appendChild(createMoveCell(reserva));
+
+        const deleteCell = document.createElement('td');
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.className = 'btn-trash';
+        deleteBtn.title = 'Excluir reserva';
+        deleteBtn.textContent = '🗑';
+
+        deleteBtn.addEventListener('click', async () => {
+          const confirmed = window.confirm('Tem certeza que deseja excluir esta reserva?');
+          if (!confirmed) {
+            return;
+          }
+
+          try {
+            deleteBtn.disabled = true;
+            await deleteReserva(reserva.id);
+            state.reservas = state.reservas.filter(item => item.id !== reserva.id);
+            renderReservas();
+            renderAdminCalendar();
+            updateSelectedDayNote();
+            setFeedback(reservationsFeedback, 'success', 'Reserva excluida com sucesso.');
+          } catch (error) {
+            setFeedback(reservationsFeedback, 'error', error.message || 'Falha ao excluir reserva.');
+          } finally {
+            deleteBtn.disabled = false;
+          }
+        });
+
+        deleteCell.appendChild(deleteBtn);
+
+        row.appendChild(clientCell);
+        row.appendChild(serviceCell);
+        row.appendChild(currentCell);
+        row.appendChild(emailCell);
+        row.appendChild(telefoneCell);
+        row.appendChild(moveCell);
+        row.appendChild(deleteCell);
+
+        reservationTableBody.appendChild(row);
+      });
+    }
+
+    async function refreshAll() {
+      const [reservas, disponibilidade, capacidade] = await Promise.all([
+        fetchReservas(),
+        fetchDisponibilidade(),
+        fetchCapacidade()
+      ]);
+
+      state.reservas = reservas;
+      state.disponibilidade = disponibilidade;
+      state.capacidade = capacidade;
+      renderReservas();
+      renderDisponibilidade();
+      renderCapacidade();
+      renderAdminCalendar();
+      updateSelectedDayNote();
+    }
+
+    async function setBlockState(bloqueado) {
+      const data = availabilityDate.value;
+      const periodo = availabilityPeriod.value;
+
+      if (!data) {
+        setFeedback(availabilityFeedback, 'error', 'Selecione uma data para alterar disponibilidade.');
+        return;
+      }
+
+      try {
+        setFeedback(availabilityFeedback, '', '');
+        state.disponibilidade = await saveDisponibilidade({ data, periodo, bloqueado });
+        renderDisponibilidade();
+        await refreshAll();
+        setFeedback(
+          availabilityFeedback,
+          'success',
+          bloqueado ? 'Período bloqueado com sucesso.' : 'Período desbloqueado com sucesso.'
+        );
+      } catch (error) {
+        setFeedback(availabilityFeedback, 'error', error.message || 'Erro ao atualizar disponibilidade.');
+      }
+    }
+
+    async function handleAddCapacity() {
+      const data = normalizeDateInput(capacityDate.value);
+      const periodo = capacityPeriod.value;
+      const quantidade = Number(capacityAmount.value);
+
+      if (!data) {
+        setFeedback(capacityFeedback, 'error', 'Selecione uma data para adicionar vagas.');
+        return;
+      }
+
+      if (!Number.isInteger(quantidade) || quantidade < 1 || quantidade > 20) {
+        setFeedback(capacityFeedback, 'error', 'Informe uma quantidade inteira entre 1 e 20.');
+        return;
+      }
+
+      try {
+        setFeedback(capacityFeedback, '', '');
+        addCapacityBtn.disabled = true;
+        if (data !== capacityDate.value) {
+          capacityDate.value = data;
+        }
+        state.capacidade = await addCapacity({ data, periodo, quantidade });
+        renderCapacidade();
+        renderAdminCalendar();
+        updateSelectedDayNote();
+        setFeedback(capacityFeedback, 'success', 'Vagas adicionadas com sucesso.');
+      } catch (error) {
+        setFeedback(capacityFeedback, 'error', error.message || 'Falha ao adicionar vagas.');
+      } finally {
+        addCapacityBtn.disabled = false;
+      }
+    }
+
+    blockBtn.addEventListener('click', () => setBlockState(true));
+    unblockBtn.addEventListener('click', () => setBlockState(false));
+    addCapacityBtn.addEventListener('click', handleAddCapacity);
+
+    async function init() {
+      setFeedback(reservationsFeedback, '', 'Carregando dados...');
+      try {
+        const hasApi = await ensureApiBase(false);
+        renderCalendarMonths();
+        await refreshAll();
+        if (hasApi) {
+          setFeedback(reservationsFeedback, '', '');
+        } else {
+          setFeedback(reservationsFeedback, 'error', 'API indisponivel. Usando modo local neste navegador.');
+        }
+      } catch (error) {
+        setFeedback(reservationsFeedback, 'error', error.message || 'Falha ao carregar painel admin.');
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
