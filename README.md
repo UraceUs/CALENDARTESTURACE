@@ -77,12 +77,12 @@ Se o envio falhar, a API retorna erro e a reserva nao e persistida.
 
 Configure as variáveis SMTP no ambiente do servidor:
 
-- `SMTP_HOST` (ex.: `smtp.gmail.com`)
-- `SMTP_PORT` (ex.: `587`)
-- `SMTP_SECURE` (`true` para SSL direto, geralmente porta 465; `false` para STARTTLS)
-- `SMTP_USER` (usuário SMTP)
-- `SMTP_PASS` (senha/app password SMTP)
-- `SMTP_FROM` (remetente exibido; se ausente, usa `SMTP_USER`)
+- `SMTP_HOST` (opcional, default: `smtp.gmail.com`)
+- `SMTP_PORT` (opcional, default: `587`)
+- `SMTP_SECURE` (opcional, default: `false`; use `true` para SSL direto na 465)
+- `SMTP_USER` (obrigatório; usuário SMTP)
+- `SMTP_PASS` (obrigatório; senha/app password SMTP)
+- `SMTP_FROM` (opcional; se ausente, usa `SMTP_USER`)
 - `SMTP_REPLY_TO` (opcional)
 
 Se SMTP nao estiver configurado, a API recusara novas reservas ate a configuracao ser corrigida.

@@ -13,10 +13,10 @@ const FIREBASE_SERVICE_ACCOUNT_FILE =
   process.env.FIREBASE_SERVICE_ACCOUNT_FILE || path.join(__dirname, 'firebase-service-account.json');
 const MAX_BODY_SIZE = 100 * 1024;
 const DEFAULT_MAX_RESERVATIONS_PER_PERIOD = 4;
-const SMTP_HOST = (process.env.SMTP_HOST || '').trim();
-const SMTP_PORT = Number.parseInt(process.env.SMTP_PORT || '', 10);
+const SMTP_HOST = (process.env.SMTP_HOST || 'smtp.gmail.com').trim();
+const SMTP_PORT = Number.parseInt(process.env.SMTP_PORT || '587', 10);
 const SMTP_SECURE =
-  String(process.env.SMTP_SECURE || '').toLowerCase() === 'true' || SMTP_PORT === 465;
+  String(process.env.SMTP_SECURE || 'false').toLowerCase() === 'true' || SMTP_PORT === 465;
 const SMTP_USER = (process.env.SMTP_USER || '').trim();
 const SMTP_PASS = process.env.SMTP_PASS || '';
 const SMTP_FROM = (process.env.SMTP_FROM || SMTP_USER || 'no-reply@calendar.local').trim();
@@ -204,6 +204,32 @@ function isEmailConfigured() {
     Boolean(SMTP_PASS) &&
     Boolean(SMTP_FROM)
   );
+}
+
+function getMissingEmailConfigFields() {
+  const missing = [];
+
+  if (!Boolean(SMTP_HOST)) {
+    missing.push('SMTP_HOST');
+  }
+
+  if (!Number.isInteger(SMTP_PORT) || SMTP_PORT <= 0) {
+    missing.push('SMTP_PORT');
+  }
+
+  if (!Boolean(SMTP_USER)) {
+    missing.push('SMTP_USER');
+  }
+
+  if (!Boolean(SMTP_PASS)) {
+    missing.push('SMTP_PASS');
+  }
+
+  if (!Boolean(SMTP_FROM)) {
+    missing.push('SMTP_FROM');
+  }
+
+  return missing;
 }
 
 function getEmailTransporter() {
@@ -729,7 +755,8 @@ async function sendReservaConfirmationEmail(reserva) {
 
   const transporter = getEmailTransporter();
   if (!transporter) {
-    console.warn('Envio de e-mail desativado: configure SMTP_HOST, SMTP_PORT, SMTP_USER e SMTP_PASS.');
+    const missingFields = getMissingEmailConfigFields();
+    console.warn(`Envio de e-mail desativado: configure ${missingFields.join(', ')}.`);
     return { sent: false, reason: 'EMAIL_NOT_CONFIGURED' };
   }
 
@@ -1319,11 +1346,12 @@ async function requestHandler(req, res) {
 
       try {
         if (!isEmailConfigured()) {
+          const missingFields = getMissingEmailConfigFields();
           sendError(
             res,
             503,
             'EMAIL_SERVICE_NOT_CONFIGURED',
-            'Servico de e-mail indisponivel. Configure SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS e SMTP_FROM.'
+            `Servico de e-mail indisponivel. Configure: ${missingFields.join(', ')}.`
           );
           return;
         }
