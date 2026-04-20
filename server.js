@@ -270,15 +270,24 @@ function periodLabel(periodo) {
 function buildReservaSummaryLines(reserva) {
   const formattedDate = formatDateBr(reserva.data);
   const label = periodLabel(reserva.periodo);
+  const experienceDescription = normalizeText(reserva.experienceDescription) || '-';
+  const serviceDatesForMonth = normalizeText(reserva.serviceDatesForMonth) || `${formattedDate} | ${label}`;
 
   return [
     `Piloto: ${reserva.nomePiloto}`,
     `Responsavel: ${reserva.responsavelPiloto}`,
     `Servico: ${reserva.servico}`,
+    `Service Dates for this Month: ${serviceDatesForMonth}`,
     `Data: ${formattedDate}`,
     `Periodo: ${label}`,
     `E-mail: ${reserva.email}`,
-    `Telefone: ${reserva.telefone}`
+    `Telefone: ${reserva.telefone}`,
+    `Age: ${normalizeText(reserva.age) || '-'}`,
+    `Height: ${normalizeText(reserva.height) || '-'}`,
+    `Weight: ${normalizeText(reserva.weight) || '-'}`,
+    `Waist: ${normalizeText(reserva.waist) || '-'}`,
+    `Karting Experience: ${normalizeText(reserva.kartingExperience) || '-'}`,
+    `Experience Description: ${experienceDescription}`
   ];
 }
 
@@ -707,6 +716,8 @@ async function runPostReservaAutomation(reservaToSave, emailConfirmation) {
 function buildReservationEmailHtml(reserva) {
   const formattedDate = formatDateBr(reserva.data);
   const label = periodLabel(reserva.periodo);
+  const experienceDescription = normalizeText(reserva.experienceDescription) || '-';
+  const serviceDatesForMonth = normalizeText(reserva.serviceDatesForMonth) || `${formattedDate} | ${label}`;
 
   return (
     '<div style="font-family:Arial,sans-serif;font-size:14px;color:#1d1d1d;line-height:1.5;">' +
@@ -715,10 +726,17 @@ function buildReservationEmailHtml(reserva) {
       '<p><strong>Piloto:</strong> ' + reserva.nomePiloto + '</p>' +
       '<p><strong>Responsavel:</strong> ' + reserva.responsavelPiloto + '</p>' +
       '<p><strong>Servico:</strong> ' + reserva.servico + '</p>' +
+      '<p><strong>Service Dates for this Month:</strong> ' + serviceDatesForMonth + '</p>' +
       '<p><strong>Data:</strong> ' + formattedDate + '</p>' +
       '<p><strong>Periodo:</strong> ' + label + '</p>' +
       '<p><strong>E-mail:</strong> ' + reserva.email + '</p>' +
       '<p><strong>Telefone:</strong> ' + reserva.telefone + '</p>' +
+      '<p><strong>Age:</strong> ' + (normalizeText(reserva.age) || '-') + '</p>' +
+      '<p><strong>Height:</strong> ' + (normalizeText(reserva.height) || '-') + '</p>' +
+      '<p><strong>Weight:</strong> ' + (normalizeText(reserva.weight) || '-') + '</p>' +
+      '<p><strong>Waist:</strong> ' + (normalizeText(reserva.waist) || '-') + '</p>' +
+      '<p><strong>Karting Experience:</strong> ' + (normalizeText(reserva.kartingExperience) || '-') + '</p>' +
+      '<p><strong>Experience Description:</strong> ' + experienceDescription + '</p>' +
       '<p>Se precisar alterar a reserva, entre em contato com o suporte do calendario.</p>' +
     '</div>'
   );
@@ -748,9 +766,21 @@ async function sendReservaConfirmationEmail(reserva) {
     `Periodo formatado: ${label}`
   ].join('\n');
 
+  const recipients = [];
+  const uniqueRecipientKeys = new Set();
+
+  [reserva.email, SMTP_USER].forEach(value => {
+    const normalized = normalizeText(value).toLowerCase();
+    if (!normalized || uniqueRecipientKeys.has(normalized)) {
+      return;
+    }
+    uniqueRecipientKeys.add(normalized);
+    recipients.push(normalized);
+  });
+
   const message = {
     from: SMTP_FROM,
-    to: reserva.email,
+    to: recipients.join(', '),
     subject,
     text,
     html: buildReservationEmailHtml(reserva)
