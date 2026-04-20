@@ -562,6 +562,7 @@
   <script src="./runtime-config.js"></script>
   <script>
     const DEFAULT_MAX_RESERVATIONS_PER_PERIOD = 4;
+    const API_REQUEST_TIMEOUT_MS = 12000;
 
     const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
@@ -688,6 +689,20 @@
       return `${state.apiBase}${path}`;
     }
 
+    async function fetchWithTimeout(url, options = {}, timeoutMs = API_REQUEST_TIMEOUT_MS) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+      try {
+        return await fetch(url, {
+          ...options,
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+
     async function canReachApi(base) {
       try {
         const controller = new AbortController();
@@ -731,14 +746,17 @@
       }
 
       try {
-        return await fetch(apiUrl(path), options);
+        return await fetchWithTimeout(apiUrl(path), options);
       } catch (error) {
         if (error && error.name === 'TypeError') {
           const recovered = await ensureApiBase(true);
           if (!recovered) {
             throw new Error('API_UNAVAILABLE');
           }
-          return await fetch(apiUrl(path), options);
+          return await fetchWithTimeout(apiUrl(path), options);
+        }
+        if (error && error.name === 'AbortError') {
+          throw new Error('API_REQUEST_TIMEOUT');
         }
         throw error;
       }
@@ -747,6 +765,9 @@
     function toUserMessage(error, fallbackMessage) {
       if (error && error.message === 'API_UNAVAILABLE') {
         return 'API indisponivel. Conecte o backend Firestore usando ?apiBase=https://seu-backend.';
+      }
+      if (error && error.message === 'API_REQUEST_TIMEOUT') {
+        return 'A API demorou para responder. Tente novamente em alguns segundos.';
       }
       if (error && error.name === 'TypeError') {
         return 'Falha de conexao com a API Firestore. Verifique o backend publicado e o parametro ?apiBase.';
