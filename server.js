@@ -22,6 +22,7 @@ const SMTP_USER = (process.env.SMTP_USER || '').trim();
 const SMTP_PASS = process.env.SMTP_PASS || '';
 const SMTP_FROM = (process.env.SMTP_FROM || SMTP_USER || 'no-reply@calendar.local').trim();
 const SMTP_REPLY_TO = (process.env.SMTP_REPLY_TO || '').trim();
+const SUPPORT_NOTIFICATION_EMAIL = (process.env.SUPPORT_NOTIFICATION_EMAIL || 'support@urace.us').trim();
 const ASANA_PERSONAL_ACCESS_TOKEN = (process.env.ASANA_PERSONAL_ACCESS_TOKEN || '').trim();
 const ASANA_PROJECT_GID = (process.env.ASANA_PROJECT_GID || '').trim();
 const ASANA_SECTION_GID = (process.env.ASANA_SECTION_GID || '').trim();
@@ -806,6 +807,66 @@ async function sendReservaConfirmationEmail(reserva) {
   }
 }
 
+async function sendSupportReservationNotificationEmail(reserva) {
+  if (!reserva) {
+    return { sent: false, reason: 'RESERVA_MISSING' };
+  }
+
+  const transporter = getEmailTransporter();
+  if (!transporter) {
+    return { sent: false, reason: 'EMAIL_NOT_CONFIGURED' };
+  }
+
+  const supportEmail = normalizeText(SUPPORT_NOTIFICATION_EMAIL).toLowerCase();
+  if (!supportEmail) {
+    return { sent: false, reason: 'SUPPORT_EMAIL_MISSING' };
+  }
+
+  const driverName = normalizeText(reserva.nomePiloto) || 'Driver sem nome';
+  const subject = `Nova Reserva - ${driverName}`;
+  const summaryLines = buildReservaSummaryLines(reserva);
+  const text = [
+    'Nova reserva recebida no painel do cliente.',
+    '',
+    ...summaryLines
+  ].join('\n');
+
+  const htmlSummary = summaryLines
+    .map(line => `<p style="margin:4px 0;">${line}</p>`)
+    .join('');
+
+  const message = {
+    from: SMTP_FROM,
+    to: supportEmail,
+    subject,
+    text,
+    html:
+      '<div style="font-family:Arial,sans-serif;font-size:14px;color:#1d1d1d;line-height:1.5;">' +
+      '<h2 style="margin:0 0 12px 0;">Nova reserva recebida</h2>' +
+      htmlSummary +
+      '</div>'
+  };
+
+  if (SMTP_REPLY_TO) {
+    message.replyTo = SMTP_REPLY_TO;
+  }
+
+  try {
+    const info = await transporter.sendMail(message);
+    return {
+      sent: true,
+      messageId: info && info.messageId ? info.messageId : null
+    };
+  } catch (error) {
+    console.error('Falha ao enviar notificacao de nova reserva para suporte:', error.message);
+    return {
+      sent: false,
+      reason: 'SUPPORT_NOTIFICATION_SEND_FAILED',
+      error: error.message
+    };
+  }
+}
+
 async function readReservas() {
   if (STORAGE_MODE === 'local') {
     return readLocalArray(reservaFile);
@@ -1446,8 +1507,26 @@ async function requestHandler(req, res) {
           return;
         }
 
+        const supportNotification = await sendSupportReservationNotificationEmail(reservaToSave);
+        if (!supportNotification.sent) {
+          try {
+            await deleteReservaById(reservaToSave.id);
+          } catch (rollbackError) {
+            console.error('Falha ao desfazer reserva apos erro de notificacao de suporte:', rollbackError.message);
+          }
+
+          sendError(
+            res,
+            502,
+            'SUPPORT_NOTIFICATION_FAILED',
+            'Nao foi possivel enviar a notificacao de nova reserva para o suporte. A reserva nao foi concluida.',
+            [supportNotification.reason || 'UNKNOWN_SUPPORT_NOTIFICATION_ERROR']
+          );
+          return;
+        }
+
         const automation = await runPostReservaAutomation(reservaToSave, emailConfirmation);
-        sendJson(res, { reserva: reservaToSave, emailConfirmation, automation }, 201);
+        sendJson(res, { reserva: reservaToSave, emailConfirmation, supportNotification, automation }, 201);
       } catch (error) {
         if (error.message === 'PAYLOAD_TOO_LARGE') {
           sendError(res, 413, 'PAYLOAD_TOO_LARGE', 'Corpo da requisicao muito grande.');

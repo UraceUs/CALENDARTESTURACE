@@ -530,7 +530,7 @@
                 <option value="Nao">Nao</option>
               </select>
             </label>
-            <label id="experienceDescriptionField" style="display: none;">descreva sua experiencia
+            <label id="experienceDescriptionField" style="display: none;">Descreva sua experiencia
               <textarea id="experienceDescription" rows="3" maxlength="500" placeholder="Conte brevemente sua experiencia"></textarea>
             </label>
             <button type="submit">Enviar reserva</button>
@@ -541,6 +541,7 @@
     </div>
   </div>
 
+  <script src="./runtime-config.js"></script>
   <script src="./js/reservation/actions/submit-actions.js"></script>
   <script>
     const DEFAULT_MAX_RESERVATIONS_PER_PERIOD = 4;
@@ -566,14 +567,10 @@
       periodIndex: new Map(),
       blockedIndex: new Map(),
       apiBase: '',
-      storageMode: 'api',
       isSubmitting: false,
       postSubmitActions: []
     };
 
-    const LOCAL_RESERVAS_KEY = 'calendar_reservas';
-    const LOCAL_DISPONIBILIDADE_KEY = 'calendar_disponibilidade';
-    const LOCAL_CAPACIDADE_KEY = 'calendar_capacidade';
     const LOCAL_API_BASE_KEY = 'calendar_api_base';
 
     const monthsContainer = document.getElementById('months');
@@ -616,6 +613,16 @@
         return '';
       }
 
+      try {
+        const parsed = new URL(trimmed);
+        const hostname = (parsed.hostname || '').toLowerCase();
+        if (hostname === 'localhost' || hostname === '127.0.0.1') {
+          return '';
+        }
+      } catch (error) {
+        return '';
+      }
+
       return trimmed;
     }
 
@@ -650,7 +657,6 @@
 
     function getApiCandidates() {
       const origin = window.location.origin;
-      const host = window.location.hostname || 'localhost';
       const candidates = [];
 
       const configuredApiBase = getConfiguredApiBase();
@@ -658,15 +664,9 @@
         candidates.push(configuredApiBase);
       }
 
-      if (window.location.port === '3000') {
+      if (!isGithubPagesHost()) {
         candidates.push(origin);
       }
-
-      if (!isGithubPagesHost()) {
-        candidates.push(`http://${host}:3000`);
-      }
-      candidates.push('http://localhost:3000');
-      candidates.push('http://127.0.0.1:3000');
 
       return [...new Set(candidates)];
     }
@@ -696,20 +696,15 @@
         const reachable = await canReachApi(base);
         if (reachable) {
           state.apiBase = base;
-          state.storageMode = 'api';
           return true;
         }
       }
 
       state.apiBase = '';
-      state.storageMode = 'local';
       return false;
     }
 
     async function ensureApiBase(force = false) {
-      if (state.storageMode === 'local' && !force) {
-        return false;
-      }
       if (state.apiBase && !force) {
         return true;
       }
@@ -734,23 +729,6 @@
         }
         throw error;
       }
-    }
-
-    function readLocalArray(key) {
-      try {
-        const raw = localStorage.getItem(key);
-        if (!raw) {
-          return [];
-        }
-        const parsed = JSON.parse(raw);
-        return Array.isArray(parsed) ? parsed : [];
-      } catch (error) {
-        return [];
-      }
-    }
-
-    function writeLocalArray(key, value) {
-      localStorage.setItem(key, JSON.stringify(Array.isArray(value) ? value : []));
     }
 
     function rebuildPeriodIndex() {
@@ -873,25 +851,15 @@
 
     function toUserMessage(error, fallbackMessage) {
       if (error && error.message === 'API_UNAVAILABLE') {
-        if (isGithubPagesHost()) {
-          return 'Site no GitHub Pages sem backend conectado. Use ?apiBase=https://seu-backend para salvar no servidor.';
-        }
-        return 'API indisponivel: dados salvos em modo local neste navegador.';
-      }
-      if (error && error.message === 'EMAIL_REQUIRES_API') {
-        return 'Para concluir a reserva com envio de e-mail, conecte uma API backend usando ?apiBase=https://seu-backend.';
+        return 'API indisponivel. Conecte o backend Firestore usando ?apiBase=https://seu-backend.';
       }
       if (error && error.name === 'TypeError') {
-        return 'Falha de conexao com o servidor. Verifique se o backend (node server.js) esta rodando.';
+        return 'Falha de conexao com a API Firestore. Verifique o backend publicado e o parametro ?apiBase.';
       }
       return (error && error.message) || fallbackMessage;
     }
 
     async function loadReservas() {
-      if (state.storageMode === 'local') {
-        return readLocalArray(LOCAL_RESERVAS_KEY);
-      }
-
       const response = await fetchWithApi('/api/reservas');
       if (!response.ok) {
         throw new Error(await readApiError(response, 'Nao foi possivel carregar as reservas.'));
@@ -901,10 +869,6 @@
     }
 
     async function loadDisponibilidade() {
-      if (state.storageMode === 'local') {
-        return readLocalArray(LOCAL_DISPONIBILIDADE_KEY);
-      }
-
       const response = await fetchWithApi('/api/disponibilidade');
       if (!response.ok) {
         throw new Error(await readApiError(response, 'Nao foi possivel carregar disponibilidade.'));
@@ -914,10 +878,6 @@
     }
 
     async function loadCapacidade() {
-      if (state.storageMode === 'local') {
-        return readLocalArray(LOCAL_CAPACIDADE_KEY);
-      }
-
       const response = await fetchWithApi('/api/capacidade');
       if (!response.ok) {
         throw new Error(await readApiError(response, 'Nao foi possivel carregar capacidade de vagas.'));
@@ -927,10 +887,6 @@
     }
 
     async function saveReserva(reserva) {
-      if (state.storageMode === 'local') {
-        throw new Error('EMAIL_REQUIRES_API');
-      }
-
       const response = await fetchWithApi('/api/reservas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1386,6 +1342,9 @@
 
       try {
         const hasApi = await ensureApiBase(false);
+        if (!hasApi) {
+          throw new Error('API_UNAVAILABLE');
+        }
         const [reservas, disponibilidade, capacidade] = await Promise.all([
           loadReservas(),
           loadDisponibilidade(),
@@ -1397,15 +1356,7 @@
         rebuildPeriodIndex();
         rebuildBlockedIndex(disponibilidade);
         refreshCalendarUi();
-        if (hasApi) {
-          setFeedback(formFeedback, 'info', '');
-        } else {
-          if (isGithubPagesHost()) {
-            setFeedback(formFeedback, 'info', '');
-          } else {
-            setFeedback(formFeedback, 'info', 'API indisponivel. Usando modo local neste navegador.');
-          }
-        }
+        setFeedback(formFeedback, 'info', '');
       } catch (error) {
         refreshCalendarUi();
         setFeedback(formFeedback, 'error', toUserMessage(error, 'Erro ao carregar reservas.'));

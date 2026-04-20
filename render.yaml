@@ -1,0 +1,44 @@
+services:
+  - type: web
+    name: calendar-backend
+    env: node
+    plan: starter
+    rootDir: .
+    buildCommand: npm ci
+    startCommand: node server.js
+    autoDeploy: true
+    envVars:
+      - key: FIREBASE_PROJECT_ID
+        value: calendar-urace-db
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_SECURE
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: SMTP_REPLY_TO
+        sync: false
+      - key: SUPPORT_NOTIFICATION_EMAIL
+        value: support@urace.us
+      - key: ASANA_PERSONAL_ACCESS_TOKEN
+        sync: false
+      - key: ASANA_PROJECT_GID
+        sync: false
+      - key: ASANA_SECTION_GID
+        sync: false
+      - key: ASANA_TASK_TEMPLATE_NAME
+        value: Session Setup [DRIVER + SERVICE]
+      - key: ASANA_TASK_TEMPLATE_GID
+        sync: false
+      - key: DOCUSIGN_WEBHOOK_URL
+        sync: false
+      - key: DOCUSIGN_WEBHOOK_TOKEN
+        sync: false

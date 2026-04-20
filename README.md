@@ -12,7 +12,7 @@ Sistema de agendamento com duas interfaces:
   - `public/Calendar.html`: cliente
   - `public/Admin.html`: painel admin
   - `public/admin/index.html`: atalho para `/admin/`
-- `data/`: fallback local opcional (`STORAGE_MODE=local`)
+- `data/`: arquivos historicos de suporte (modo local desativado)
   - `data/Reservation.json`
   - `data/Availability.json`
 
@@ -50,7 +50,7 @@ Fluxo principal do administrador:
 
 ## Storage no backend
 
-O backend usa **Firestore por padrão** (`STORAGE_MODE=firestore`).
+O backend usa **Firestore de forma obrigatoria**.
 
 Para autenticar no Firestore, configure uma das opções abaixo:
 
@@ -63,7 +63,11 @@ Para autenticar no Firestore, configure uma das opções abaixo:
 Opcional:
 
 - `FIREBASE_PROJECT_ID` (default: `calendar-urace-db`)
-- `STORAGE_MODE=local` para forçar persistência em arquivo JSON local.
+
+Importante:
+
+- O modo local foi desativado.
+- Sem credenciais Firestore validas, a API nao inicia o armazenamento.
 
 ## Confirmação de reserva por e-mail
 
@@ -179,7 +183,7 @@ Campos opcionais aceitos no `POST /api/reservas` para preencher a descrição do
 
 Quando o frontend roda no GitHub Pages (`*.github.io`), ele nao consegue acessar automaticamente `localhost:3000` do seu computador.
 
-Nessa situacao, o site entra em modo local no navegador (localStorage) e mostra um aviso informativo.
+Nessa situacao, conecte um backend publicado via `apiBase`.
 
 Para usar uma API backend publicada (Render, Railway, VPS etc.), abra a URL com o parametro `apiBase`:
 
@@ -187,6 +191,26 @@ Para usar uma API backend publicada (Render, Railway, VPS etc.), abra a URL com 
 - Admin: `https://SEU_USUARIO.github.io/SEU_REPO/Admin.html?apiBase=https://seu-backend.com`
 
 O valor de `apiBase` valido fica salvo no navegador e sera reutilizado nas proximas visitas.
+Sem backend conectado, cliente e admin exibem erro e nao persistem dados.
+
+### Configuracao permanente de API no frontend
+
+Para evitar usar `?apiBase=` em toda URL:
+
+1. Publique o backend (ex.: Render).
+2. Edite `public/runtime-config.js`:
+  - `window.CALENDAR_API_BASE = 'https://SEU_BACKEND_PUBLICO';`
+3. Publique novamente o frontend no GitHub Pages.
+
+Com isso, `Calendar.html` e `Admin.html` passam a usar automaticamente a API publicada.
+
+### Deploy de backend com Render
+
+O repositório inclui `render.yaml` para criar o serviço backend Node.js.
+
+1. No Render, crie um serviço usando Blueprint apontando para este repositório.
+2. Preencha os secrets obrigatórios (`FIREBASE_SERVICE_ACCOUNT_JSON`, SMTP e demais integrações).
+3. Após deploy, copie a URL pública do backend e configure em `public/runtime-config.js`.
 
 ## APIs
 
@@ -208,9 +232,8 @@ O valor de `apiBase` valido fica salvo no navegador e sera reutilizado nas proxi
 
 ## Observações importantes
 
-- Se `STORAGE_MODE=firestore`, os dados ficam persistidos no Firestore.
-- Se `STORAGE_MODE=local`, os dados ficam nos arquivos JSON dentro de `data/`.
-- Em produção, prefira Firestore para maior confiabilidade e consistência.
+- Os dados ficam persistidos no Firestore.
+- O modo local em arquivo/`localStorage` nao e mais utilizado.
 
 ## Workflow visual do processo
 
