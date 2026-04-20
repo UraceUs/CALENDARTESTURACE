@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
 const admin = require('firebase-admin');
+const nodemailer = require('nodemailer');
 
 const PORT = process.env.PORT || 3000;
 const publicFile = path.join(__dirname, 'public', 'Calendar.html');
@@ -16,6 +17,33 @@ const FIREBASE_SERVICE_ACCOUNT_FILE =
   process.env.FIREBASE_SERVICE_ACCOUNT_FILE || path.join(__dirname, 'firebase-service-account.json');
 const MAX_BODY_SIZE = 100 * 1024;
 const DEFAULT_MAX_RESERVATIONS_PER_PERIOD = 4;
+const SMTP_HOST = (process.env.SMTP_HOST || '').trim();
+const SMTP_PORT = Number.parseInt(process.env.SMTP_PORT || '', 10);
+const SMTP_SECURE =
+  String(process.env.SMTP_SECURE || '').toLowerCase() === 'true' || SMTP_PORT === 465;
+const SMTP_USER = (process.env.SMTP_USER || '').trim();
+const SMTP_PASS = process.env.SMTP_PASS || '';
+const SMTP_FROM = (process.env.SMTP_FROM || SMTP_USER || 'no-reply@calendar.local').trim();
+const SMTP_REPLY_TO = (process.env.SMTP_REPLY_TO || '').trim();
+const ASANA_PERSONAL_ACCESS_TOKEN = (process.env.ASANA_PERSONAL_ACCESS_TOKEN || '').trim();
+const ASANA_PROJECT_GID = (process.env.ASANA_PROJECT_GID || '').trim();
+const ASANA_SECTION_GID = (process.env.ASANA_SECTION_GID || '').trim();
+const ASANA_TASK_TEMPLATE_NAME =
+  (process.env.ASANA_TASK_TEMPLATE_NAME || 'Session Setup [DRIVER + SERVICE]').trim();
+const ASANA_TASK_TEMPLATE_GID = (process.env.ASANA_TASK_TEMPLATE_GID || '').trim();
+const DOCUSIGN_WEBHOOK_URL = (process.env.DOCUSIGN_WEBHOOK_URL || '').trim();
+const DOCUSIGN_WEBHOOK_TOKEN = (process.env.DOCUSIGN_WEBHOOK_TOKEN || '').trim();
+
+const ASANA_CHECKLIST_SUBTASKS = [
+  'Enviado Security Deposit?',
+  'Signed waiver?',
+  'Pago Security Deposit/Driver pass?',
+  'Comprar Driver Pass?',
+  'Enviar Driver Pass para o cliente',
+  'Service Order',
+  'Feedback about the driver/session',
+  'Payment has been completed (invoice)?'
+];
 
 const ALLOWED_SERVICES = new Set([
   'Professional Coaching',
@@ -29,6 +57,8 @@ const firestoreState = {
   enabled: false,
   reason: ''
 };
+
+let emailTransporter = null;
 
 function initFirestore() {
   if (STORAGE_MODE !== 'firestore') {
@@ -193,6 +223,566 @@ function credentialHelpMessage() {
   );
 }
 
+function isEmailConfigured() {
+  return (
+    Boolean(SMTP_HOST) &&
+    Number.isInteger(SMTP_PORT) &&
+    SMTP_PORT > 0 &&
+    Boolean(SMTP_USER) &&
+    Boolean(SMTP_PASS) &&
+    Boolean(SMTP_FROM)
+  );
+}
+
+function getEmailTransporter() {
+  if (!isEmailConfigured()) {
+    return null;
+  }
+
+  if (emailTransporter) {
+    return emailTransporter;
+  }
+
+  emailTransporter = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: SMTP_SECURE,
+    auth: {
+      user: SMTP_USER,
+      pass: SMTP_PASS
+    }
+  });
+
+  return emailTransporter;
+}
+
+function formatDateBr(dateString) {
+  if (!isValidDateString(dateString)) {
+    return dateString;
+  }
+
+  const [year, month, day] = dateString.split('-');
+  return `${day}/${month}/${year}`;
+}
+
+function periodLabel(periodo) {
+  if (periodo === 'manha') {
+    return 'Manha';
+  }
+  if (periodo === 'tarde') {
+    return 'Tarde';
+  }
+  return periodo;
+}
+
+function buildReservaSummaryLines(reserva) {
+  const formattedDate = formatDateBr(reserva.data);
+  const label = periodLabel(reserva.periodo);
+
+  return [
+    `Piloto: ${reserva.nomePiloto}`,
+    `Responsavel: ${reserva.responsavelPiloto}`,
+    `Servico: ${reserva.servico}`,
+    `Data: ${formattedDate}`,
+    `Periodo: ${label}`,
+    `E-mail: ${reserva.email}`,
+    `Telefone: ${reserva.telefone}`
+  ];
+}
+
+async function postJson(url, body, options = {}) {
+  if (typeof fetch !== 'function') {
+    throw new Error('FETCH_NOT_AVAILABLE');
+  }
+
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(options.headers || {})
+  };
+
+  const response = await fetch(url, {
+    method: options.method || 'POST',
+    headers,
+    body: JSON.stringify(body)
+  });
+
+  const contentType = response.headers.get('content-type') || '';
+  const isJson = contentType.includes('application/json');
+  const responseBody = isJson ? await response.json() : await response.text();
+
+  if (!response.ok) {
+    const errorText = typeof responseBody === 'string'
+      ? responseBody
+      : JSON.stringify(responseBody);
+    throw new Error(`HTTP_${response.status}: ${errorText}`);
+  }
+
+  return responseBody;
+}
+
+function isAsanaConfigured() {
+  return Boolean(ASANA_PERSONAL_ACCESS_TOKEN) && Boolean(ASANA_PROJECT_GID);
+}
+
+function buildAsanaServiceDates(reserva) {
+  return `${formatDateBr(reserva.data)} | ${periodLabel(reserva.periodo)}`;
+}
+
+function asanaProfileValue(value) {
+  const normalized = normalizeText(value);
+  return normalized || '-';
+}
+
+function buildAsanaTaskDescription(reserva) {
+  return [
+    `Service Dates for this Month: ${asanaProfileValue(buildAsanaServiceDates(reserva))}`,
+    `Age: ${asanaProfileValue(reserva.age)}`,
+    `Height: ${asanaProfileValue(reserva.height)}`,
+    `Weight: ${asanaProfileValue(reserva.weight)}`,
+    `Waist: ${asanaProfileValue(reserva.waist)}`,
+    `Responsible: ${asanaProfileValue(reserva.responsavelPiloto)}`,
+    `Email: ${asanaProfileValue(reserva.email)}`,
+    `Phone: ${asanaProfileValue(reserva.telefone)}`,
+    `Karting Experience: ${asanaProfileValue(reserva.kartingExperience)}`
+  ].join('\n');
+}
+
+async function asanaRequest(pathname, method = 'GET', payload, query = {}) {
+  if (typeof fetch !== 'function') {
+    throw new Error('FETCH_NOT_AVAILABLE');
+  }
+
+  const url = new URL(`https://app.asana.com/api/1.0${pathname}`);
+  Object.entries(query || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      url.searchParams.set(key, String(value));
+    }
+  });
+
+  const headers = {
+    Authorization: `Bearer ${ASANA_PERSONAL_ACCESS_TOKEN}`,
+    Accept: 'application/json'
+  };
+
+  const options = {
+    method,
+    headers
+  };
+
+  if (payload !== undefined) {
+    headers['Content-Type'] = 'application/json';
+    options.body = JSON.stringify({ data: payload });
+  }
+
+  const response = await fetch(url, options);
+  const contentType = response.headers.get('content-type') || '';
+  const isJson = contentType.includes('application/json');
+  const body = isJson ? await response.json() : await response.text();
+
+  if (!response.ok) {
+    const errorText = typeof body === 'string' ? body : JSON.stringify(body);
+    throw new Error(`HTTP_${response.status}: ${errorText}`);
+  }
+
+  if (body && typeof body === 'object' && Object.prototype.hasOwnProperty.call(body, 'data')) {
+    return body.data;
+  }
+
+  return body;
+}
+
+async function findAsanaTemplateGid() {
+  if (ASANA_TASK_TEMPLATE_GID) {
+    return ASANA_TASK_TEMPLATE_GID;
+  }
+
+  try {
+    const data = await asanaRequest(`/projects/${ASANA_PROJECT_GID}/task_templates`, 'GET');
+    const templates = Array.isArray(data) ? data : [];
+    const targetName = ASANA_TASK_TEMPLATE_NAME.toLowerCase();
+    const matched = templates.find(item =>
+      item && typeof item.name === 'string' && item.name.trim().toLowerCase() === targetName
+    );
+    return matched && matched.gid ? matched.gid : '';
+  } catch (error) {
+    console.error('Falha ao buscar template no Asana:', error.message);
+    return '';
+  }
+}
+
+async function updateAsanaTaskDetails(taskGid, taskName, taskNotes) {
+  await asanaRequest(`/tasks/${taskGid}`, 'PUT', {
+    name: taskName,
+    notes: taskNotes
+  });
+}
+
+async function addAsanaTaskToProject(taskGid) {
+  const payload = { project: ASANA_PROJECT_GID };
+  if (ASANA_SECTION_GID) {
+    payload.section = ASANA_SECTION_GID;
+  }
+  await asanaRequest(`/tasks/${taskGid}/addProject`, 'POST', payload);
+}
+
+function extractAsanaTaskGidFromTemplateResponse(responseData) {
+  if (!responseData || typeof responseData !== 'object') {
+    return '';
+  }
+
+  if (responseData.gid) {
+    return responseData.gid;
+  }
+
+  if (responseData.task && responseData.task.gid) {
+    return responseData.task.gid;
+  }
+
+  if (responseData.new_task && responseData.new_task.gid) {
+    return responseData.new_task.gid;
+  }
+
+  return '';
+}
+
+async function instantiateAsanaTaskFromTemplate(templateGid, taskName, taskNotes) {
+  if (!templateGid) {
+    return { created: false, reason: 'ASANA_TEMPLATE_NOT_FOUND' };
+  }
+
+  try {
+    const instantiated = await asanaRequest(
+      `/task_templates/${templateGid}/instantiateTask`,
+      'POST',
+      { name: taskName }
+    );
+
+    const taskGid = extractAsanaTaskGidFromTemplateResponse(instantiated);
+    if (!taskGid) {
+      return { created: false, reason: 'ASANA_TEMPLATE_INSTANTIATE_NO_TASK' };
+    }
+
+    await updateAsanaTaskDetails(taskGid, taskName, taskNotes);
+    await addAsanaTaskToProject(taskGid);
+
+    return {
+      created: true,
+      taskGid,
+      usedTemplate: true,
+      templateGid
+    };
+  } catch (error) {
+    console.error('Falha ao instanciar template no Asana:', error.message);
+    return {
+      created: false,
+      reason: 'ASANA_TEMPLATE_INSTANTIATE_FAILED',
+      error: error.message,
+      templateGid
+    };
+  }
+}
+
+async function createAsanaTaskForReserva(reserva) {
+  if (!isAsanaConfigured()) {
+    return { created: false, reason: 'ASANA_NOT_CONFIGURED' };
+  }
+
+  const formattedDate = formatDateBr(reserva.data);
+  const periodo = periodLabel(reserva.periodo);
+  const taskName = `${reserva.servico} | ${reserva.nomePiloto} | ${formattedDate} ${periodo}`;
+  const taskNotes = buildAsanaTaskDescription(reserva);
+  const templateGid = await findAsanaTemplateGid();
+
+  const instantiated = await instantiateAsanaTaskFromTemplate(templateGid, taskName, taskNotes);
+  if (instantiated.created) {
+    return {
+      ...instantiated,
+      taskName,
+      taskNotes
+    };
+  }
+
+  return {
+    created: false,
+    reason: instantiated.reason || 'ASANA_TEMPLATE_REQUIRED',
+    error: instantiated.error || null,
+    templateName: ASANA_TASK_TEMPLATE_NAME,
+    templateGid: templateGid || null
+  };
+}
+
+async function addAsanaComment(taskGid, text) {
+  if (!taskGid) {
+    return { added: false, reason: 'TASK_MISSING' };
+  }
+
+  try {
+    await asanaRequest(`/tasks/${taskGid}/stories`, 'POST', { text });
+    return { added: true };
+  } catch (error) {
+    console.error('Falha ao adicionar comentario no Asana:', error.message);
+    return { added: false, reason: 'ASANA_COMMENT_FAILED', error: error.message };
+  }
+}
+
+async function createAsanaSubtask(taskGid, name) {
+  if (!taskGid) {
+    return { created: false, reason: 'TASK_MISSING' };
+  }
+
+  try {
+    const response = await asanaRequest(`/tasks/${taskGid}/subtasks`, 'POST', { name });
+    const subtask = response && response.data ? response.data : {};
+    return {
+      created: true,
+      subtaskGid: subtask.gid || null
+    };
+  } catch (error) {
+    console.error('Falha ao criar subtask no Asana:', error.message);
+    return { created: false, reason: 'ASANA_SUBTASK_FAILED', error: error.message };
+  }
+}
+
+async function listAsanaSubtasks(taskGid) {
+  if (!taskGid) {
+    return { listed: false, reason: 'TASK_MISSING', subtasks: [] };
+  }
+
+  try {
+    const data = await asanaRequest(`/tasks/${taskGid}/subtasks`, 'GET', undefined, {
+      opt_fields: 'gid,name,completed'
+    });
+
+    return {
+      listed: true,
+      subtasks: Array.isArray(data) ? data : []
+    };
+  } catch (error) {
+    console.error('Falha ao listar subtarefas no Asana:', error.message);
+    return {
+      listed: false,
+      reason: 'ASANA_SUBTASK_LIST_FAILED',
+      error: error.message,
+      subtasks: []
+    };
+  }
+}
+
+async function ensureAsanaChecklistSubtasks(taskGid) {
+  const listed = await listAsanaSubtasks(taskGid);
+  const existing = listed.subtasks || [];
+  const byName = {};
+  const failures = [];
+  const created = [];
+
+  existing.forEach(item => {
+    if (!item || !item.name) {
+      return;
+    }
+    byName[item.name.toLowerCase()] = {
+      gid: item.gid || null,
+      name: item.name,
+      completed: Boolean(item.completed)
+    };
+  });
+
+  for (const expectedName of ASANA_CHECKLIST_SUBTASKS) {
+    const key = expectedName.toLowerCase();
+    if (byName[key]) {
+      continue;
+    }
+
+    const createdSubtask = await createAsanaSubtask(taskGid, expectedName);
+    if (!createdSubtask.created || !createdSubtask.subtaskGid) {
+      failures.push({ name: expectedName, result: createdSubtask });
+      continue;
+    }
+
+    byName[key] = {
+      gid: createdSubtask.subtaskGid,
+      name: expectedName,
+      completed: false
+    };
+    created.push(expectedName);
+  }
+
+  return {
+    synced: failures.length === 0,
+    listed,
+    created,
+    failures,
+    subtasksByName: byName
+  };
+}
+
+async function completeAsanaTask(taskGid) {
+  if (!taskGid) {
+    return { completed: false, reason: 'TASK_MISSING' };
+  }
+
+  try {
+    await asanaRequest(`/tasks/${taskGid}`, 'PUT', { completed: true });
+    return { completed: true };
+  } catch (error) {
+    console.error('Falha ao concluir item no Asana:', error.message);
+    return { completed: false, reason: 'ASANA_COMPLETE_FAILED', error: error.message };
+  }
+}
+
+function isDocusignConfigured() {
+  return Boolean(DOCUSIGN_WEBHOOK_URL);
+}
+
+async function triggerDocusignForReserva(reserva, asanaTask) {
+  if (!isDocusignConfigured()) {
+    return { triggered: false, reason: 'DOCUSIGN_NOT_CONFIGURED' };
+  }
+
+  const payload = {
+    source: 'calendar-reserva-site',
+    reserva,
+    asanaTask,
+    sentAt: new Date().toISOString()
+  };
+
+  const headers = {};
+  if (DOCUSIGN_WEBHOOK_TOKEN) {
+    headers.Authorization = `Bearer ${DOCUSIGN_WEBHOOK_TOKEN}`;
+  }
+
+  try {
+    const response = await postJson(DOCUSIGN_WEBHOOK_URL, payload, { headers });
+    const envelopeId = response && typeof response === 'object' ? response.envelopeId || null : null;
+
+    return {
+      triggered: true,
+      envelopeId,
+      response
+    };
+  } catch (error) {
+    console.error('Falha ao acionar envio DocuSign:', error.message);
+    return {
+      triggered: false,
+      reason: 'DOCUSIGN_TRIGGER_FAILED',
+      error: error.message
+    };
+  }
+}
+
+async function syncAsanaDocusignChecklist(asanaResult, docusignResult) {
+  if (!asanaResult || !asanaResult.created || !asanaResult.taskGid) {
+    return { synced: false, reason: 'ASANA_TASK_MISSING' };
+  }
+
+  const checklist = await ensureAsanaChecklistSubtasks(asanaResult.taskGid);
+  const result = { synced: checklist.synced, checklist };
+
+  if (docusignResult && docusignResult.triggered) {
+    const signedWaiver = checklist.subtasksByName['signed waiver?'];
+    if (signedWaiver && signedWaiver.gid) {
+      result.subtaskCompletion = await completeAsanaTask(signedWaiver.gid);
+    }
+
+    const envelopeMessage = docusignResult.envelopeId
+      ? `DocuSign enviado com sucesso. Envelope: ${docusignResult.envelopeId}`
+      : 'DocuSign enviado com sucesso.';
+    result.comment = await addAsanaComment(asanaResult.taskGid, envelopeMessage);
+    return result;
+  }
+
+  result.comment = await addAsanaComment(
+    asanaResult.taskGid,
+    'DocuSign nao foi enviado automaticamente. Verificar integracao e enviar manualmente.'
+  );
+  return result;
+}
+
+async function runPostReservaAutomation(reservaToSave, emailConfirmation) {
+  const asanaResult = await createAsanaTaskForReserva(reservaToSave);
+  const docusignResult = await triggerDocusignForReserva(reservaToSave, asanaResult);
+  const checklistResult = await syncAsanaDocusignChecklist(asanaResult, docusignResult);
+
+  return {
+    trigger: 'SITE_RESERVA_CREATED',
+    emailConfirmation,
+    asana: asanaResult,
+    docusign: docusignResult,
+    checklist: checklistResult
+  };
+}
+
+function buildReservationEmailHtml(reserva) {
+  const formattedDate = formatDateBr(reserva.data);
+  const label = periodLabel(reserva.periodo);
+
+  return (
+    '<div style="font-family:Arial,sans-serif;font-size:14px;color:#1d1d1d;line-height:1.5;">' +
+      '<h2 style="margin:0 0 12px 0;">Confirmacao de reserva</h2>' +
+      '<p>Recebemos sua reserva com sucesso.</p>' +
+      '<p><strong>Piloto:</strong> ' + reserva.nomePiloto + '</p>' +
+      '<p><strong>Responsavel:</strong> ' + reserva.responsavelPiloto + '</p>' +
+      '<p><strong>Servico:</strong> ' + reserva.servico + '</p>' +
+      '<p><strong>Data:</strong> ' + formattedDate + '</p>' +
+      '<p><strong>Periodo:</strong> ' + label + '</p>' +
+      '<p><strong>E-mail:</strong> ' + reserva.email + '</p>' +
+      '<p><strong>Telefone:</strong> ' + reserva.telefone + '</p>' +
+      '<p>Se precisar alterar a reserva, entre em contato com o suporte do calendario.</p>' +
+    '</div>'
+  );
+}
+
+async function sendReservaConfirmationEmail(reserva) {
+  if (!reserva || !reserva.email) {
+    return { sent: false, reason: 'EMAIL_MISSING' };
+  }
+
+  const transporter = getEmailTransporter();
+  if (!transporter) {
+    console.warn('Envio de e-mail desativado: configure SMTP_HOST, SMTP_PORT, SMTP_USER e SMTP_PASS.');
+    return { sent: false, reason: 'EMAIL_NOT_CONFIGURED' };
+  }
+
+  const formattedDate = formatDateBr(reserva.data);
+  const label = periodLabel(reserva.periodo);
+  const subject = `Confirmacao da reserva - ${reserva.servico}`;
+  const text = [
+    'Recebemos sua reserva com sucesso.',
+    '',
+    'Resumo completo da reserva:',
+    ...buildReservaSummaryLines(reserva),
+    '',
+    `Data formatada: ${formattedDate}`,
+    `Periodo formatado: ${label}`
+  ].join('\n');
+
+  const message = {
+    from: SMTP_FROM,
+    to: reserva.email,
+    subject,
+    text,
+    html: buildReservationEmailHtml(reserva)
+  };
+
+  if (SMTP_REPLY_TO) {
+    message.replyTo = SMTP_REPLY_TO;
+  }
+
+  try {
+    const info = await transporter.sendMail(message);
+    return {
+      sent: true,
+      messageId: info && info.messageId ? info.messageId : null
+    };
+  } catch (error) {
+    console.error('Falha ao enviar e-mail de confirmacao:', error.message);
+    return {
+      sent: false,
+      reason: 'EMAIL_SEND_FAILED',
+      error: error.message
+    };
+  }
+}
+
 async function readReservas() {
   if (STORAGE_MODE === 'local') {
     return readLocalArray(reservaFile);
@@ -215,6 +805,12 @@ async function readReservas() {
       periodo: data.periodo || '',
       email: data.email || '',
       telefone: data.telefone || '',
+      serviceDatesForMonth: data.serviceDatesForMonth || '',
+      age: data.age || '',
+      height: data.height || '',
+      weight: data.weight || '',
+      waist: data.waist || '',
+      kartingExperience: data.kartingExperience || '',
       createdAt: asIsoDateTime(data.createdAt) || asIsoDateTime(data.created_at),
       movedAt: asIsoDateTime(data.movedAt) || null
     });
@@ -351,6 +947,12 @@ async function moveReservaById(id, data, periodo) {
     periodo: updated.periodo || periodo,
     email: updated.email || '',
     telefone: updated.telefone || '',
+    serviceDatesForMonth: updated.serviceDatesForMonth || '',
+    age: updated.age || '',
+    height: updated.height || '',
+    weight: updated.weight || '',
+    waist: updated.waist || '',
+    kartingExperience: updated.kartingExperience || '',
     createdAt: asIsoDateTime(updated.createdAt) || null,
     movedAt: asIsoDateTime(updated.movedAt) || new Date().toISOString()
   };
@@ -456,9 +1058,57 @@ function normalizeInteger(value) {
   return parsed;
 }
 
+function isValidEmailAddress(value) {
+  if (typeof value !== 'string') {
+    return false;
+  }
+
+  const email = value.trim().toLowerCase();
+  if (!email || email.length > 254) {
+    return false;
+  }
+
+  const basicRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!basicRegex.test(email)) {
+    return false;
+  }
+
+  const [localPart, domain] = email.split('@');
+  if (!localPart || !domain) {
+    return false;
+  }
+
+  if (localPart.length > 64 || domain.length > 253) {
+    return false;
+  }
+
+  if (email.includes('..') || localPart.startsWith('.') || localPart.endsWith('.')) {
+    return false;
+  }
+
+  if (domain.startsWith('-') || domain.endsWith('-') || domain.startsWith('.') || domain.endsWith('.')) {
+    return false;
+  }
+
+  if (!/^[a-z0-9.-]+$/.test(domain)) {
+    return false;
+  }
+
+  const domainParts = domain.split('.').filter(Boolean);
+  if (domainParts.length < 2) {
+    return false;
+  }
+
+  const tld = domainParts[domainParts.length - 1];
+  if (!/^[a-z]{2,}$/.test(tld)) {
+    return false;
+  }
+
+  return true;
+}
+
 function validateReserva(payload) {
   const errors = [];
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const phoneRegex = /^[0-9()+\-\s]{8,20}$/;
 
   const nomePiloto = normalizeText(payload.nomePiloto || payload.nome);
@@ -470,6 +1120,13 @@ function validateReserva(payload) {
   const periodo = normalizeText(payload.periodo);
   const email = normalizeText(payload.email).toLowerCase();
   const telefone = normalizeText(payload.telefone);
+  const serviceDatesForMonth = normalizeText(payload.serviceDatesForMonth || payload.serviceDates);
+  const age = normalizeText(payload.age);
+  const height = normalizeText(payload.height);
+  const weight = normalizeText(payload.weight);
+  const waist = normalizeText(payload.waist);
+  const kartingExperience = normalizeText(payload.kartingExperience);
+  const ageNumber = Number.parseInt(age, 10);
 
   if (!nomePiloto || nomePiloto.length < 2 || nomePiloto.length > 120) {
     errors.push('Campo nomePiloto deve ter entre 2 e 120 caracteres.');
@@ -491,12 +1148,32 @@ function validateReserva(payload) {
     errors.push('Campo periodo deve ser manha ou tarde.');
   }
 
-  if (!emailRegex.test(email)) {
+  if (!isValidEmailAddress(email)) {
     errors.push('Campo email invalido.');
   }
 
   if (!phoneRegex.test(telefone)) {
     errors.push('Campo telefone invalido (8-20 caracteres).');
+  }
+
+  if (!Number.isInteger(ageNumber) || ageNumber < 1 || ageNumber > 120) {
+    errors.push('Campo age deve ser inteiro entre 1 e 120.');
+  }
+
+  if (!height || height.length < 2 || height.length > 40) {
+    errors.push('Campo height e obrigatorio (2-40 caracteres).');
+  }
+
+  if (!weight || weight.length < 2 || weight.length > 40) {
+    errors.push('Campo weight e obrigatorio (2-40 caracteres).');
+  }
+
+  if (!waist || waist.length < 1 || waist.length > 40) {
+    errors.push('Campo waist e obrigatorio (1-40 caracteres).');
+  }
+
+  if (!['Sim', 'Nao'].includes(kartingExperience)) {
+    errors.push('Campo kartingExperience deve ser Sim ou Nao.');
   }
 
   return {
@@ -509,7 +1186,13 @@ function validateReserva(payload) {
       data,
       periodo,
       email,
-      telefone
+      telefone,
+      serviceDatesForMonth,
+      age,
+      height,
+      weight,
+      waist,
+      kartingExperience
     }
   };
 }
@@ -667,6 +1350,16 @@ const server = http.createServer(async (req, res) => {
       }
 
       try {
+        if (!isEmailConfigured()) {
+          sendError(
+            res,
+            503,
+            'EMAIL_SERVICE_NOT_CONFIGURED',
+            'Servico de e-mail indisponivel. Configure SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS e SMTP_FROM.'
+          );
+          return;
+        }
+
         const payload = await parseJsonBody(req);
         const { errors, reserva } = validateReserva(payload || {});
         if (errors.length > 0) {
@@ -701,7 +1394,27 @@ const server = http.createServer(async (req, res) => {
         }
 
         const reservaToSave = await createReserva(reserva);
-        sendJson(res, { reserva: reservaToSave }, 201);
+        const emailConfirmation = await sendReservaConfirmationEmail(reservaToSave);
+
+        if (!emailConfirmation.sent) {
+          try {
+            await deleteReservaById(reservaToSave.id);
+          } catch (rollbackError) {
+            console.error('Falha ao desfazer reserva apos erro de e-mail:', rollbackError.message);
+          }
+
+          sendError(
+            res,
+            502,
+            'EMAIL_SEND_FAILED',
+            'Nao foi possivel enviar o e-mail de confirmacao. A reserva nao foi concluida.',
+            [emailConfirmation.reason || 'UNKNOWN_EMAIL_ERROR']
+          );
+          return;
+        }
+
+        const automation = await runPostReservaAutomation(reservaToSave, emailConfirmation);
+        sendJson(res, { reserva: reservaToSave, emailConfirmation, automation }, 201);
       } catch (error) {
         if (error.message === 'PAYLOAD_TOO_LARGE') {
           sendError(res, 413, 'PAYLOAD_TOO_LARGE', 'Corpo da requisicao muito grande.');

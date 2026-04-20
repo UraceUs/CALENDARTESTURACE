@@ -250,6 +250,11 @@
       font-weight: 700;
     }
 
+    .form-panel .section-label {
+      margin-top: 12px;
+      margin-bottom: 8px;
+    }
+
     .service-options {
       display: flex;
       gap: 10px;
@@ -458,7 +463,7 @@
         <div class="form-panel">
           <form id="reservaForm">
             <div id="periodoField">
-              <label>Período</label>
+              <label class="section-label">Período</label>
               <div class="period-options" id="periodOptions">
                 <button type="button" class="period-card" data-period="manha">
                   <span class="period-icon">🌅</span>
@@ -475,7 +480,7 @@
             </div>
             <p class="feedback info" id="periodHint" aria-live="polite"></p>
 
-            <label>Serviço</label>
+            <label class="section-label">Serviço</label>
             <div class="service-options">
               <button type="button" class="service-card" data-service="Professional Coaching">
                 <span class="service-icon">🏎️</span>
@@ -500,10 +505,29 @@
               <input type="text" id="responsavelPiloto" required />
             </label>
             <label>E-mail
-              <input type="email" id="email" required />
+              <input type="email" id="email" required maxlength="254" autocapitalize="off" autocomplete="email" inputmode="email" pattern="[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+" title="Informe um e-mail valido (ex.: nome@dominio.com)" />
             </label>
             <label>Telefone
               <input type="tel" id="telefone" required />
+            </label>
+            <label>Idade do driver
+              <input type="number" id="age" min="1" max="120" required />
+            </label>
+            <label>Height do driver
+              <input type="text" id="height" placeholder="Ex.: 1.72m" required />
+            </label>
+            <label>Weight do driver
+              <input type="text" id="weight" placeholder="Ex.: 68kg" required />
+            </label>
+            <label>Waist do driver
+              <input type="text" id="waist" placeholder="Ex.: 78cm" required />
+            </label>
+            <label>Karting Experience
+              <select id="kartingExperience" required>
+                <option value="">Selecione</option>
+                <option value="Sim">Sim</option>
+                <option value="Nao">Nao</option>
+              </select>
             </label>
             <button type="submit">Enviar reserva</button>
             <p class="feedback info" id="formFeedback" aria-live="polite"></p>
@@ -513,6 +537,7 @@
     </div>
   </div>
 
+  <script src="./js/reservation/actions/submit-actions.js"></script>
   <script>
     const DEFAULT_MAX_RESERVATIONS_PER_PERIOD = 4;
 
@@ -538,12 +563,14 @@
       blockedIndex: new Map(),
       apiBase: '',
       storageMode: 'api',
-      isSubmitting: false
+      isSubmitting: false,
+      postSubmitActions: []
     };
 
     const LOCAL_RESERVAS_KEY = 'calendar_reservas';
     const LOCAL_DISPONIBILIDADE_KEY = 'calendar_disponibilidade';
     const LOCAL_CAPACIDADE_KEY = 'calendar_capacidade';
+    const LOCAL_API_BASE_KEY = 'calendar_api_base';
 
     const monthsContainer = document.getElementById('months');
     const daysGrid = document.getElementById('daysGrid');
@@ -564,16 +591,73 @@
       target.textContent = message || '';
     }
 
+    function isGithubPagesHost() {
+      return (window.location.hostname || '').toLowerCase().endsWith('github.io');
+    }
+
+    function normalizeApiBase(value) {
+      if (!value || typeof value !== 'string') {
+        return '';
+      }
+
+      const trimmed = value.trim().replace(/\/$/, '');
+      if (!trimmed) {
+        return '';
+      }
+
+      if (!/^https?:\/\//i.test(trimmed)) {
+        return '';
+      }
+
+      return trimmed;
+    }
+
+    function getConfiguredApiBase() {
+      try {
+        const params = new URLSearchParams(window.location.search || '');
+        const paramApiBase = normalizeApiBase(params.get('apiBase') || '');
+        if (paramApiBase) {
+          localStorage.setItem(LOCAL_API_BASE_KEY, paramApiBase);
+          return paramApiBase;
+        }
+      } catch (error) {
+        console.error('Falha ao ler apiBase da URL:', error);
+      }
+
+      const windowApiBase = normalizeApiBase(window.CALENDAR_API_BASE || '');
+      if (windowApiBase) {
+        return windowApiBase;
+      }
+
+      try {
+        const storedApiBase = normalizeApiBase(localStorage.getItem(LOCAL_API_BASE_KEY) || '');
+        if (storedApiBase) {
+          return storedApiBase;
+        }
+      } catch (error) {
+        console.error('Falha ao ler apiBase salvo:', error);
+      }
+
+      return '';
+    }
+
     function getApiCandidates() {
       const origin = window.location.origin;
       const host = window.location.hostname || 'localhost';
       const candidates = [];
 
+      const configuredApiBase = getConfiguredApiBase();
+      if (configuredApiBase) {
+        candidates.push(configuredApiBase);
+      }
+
       if (window.location.port === '3000') {
         candidates.push(origin);
       }
 
-      candidates.push(`http://${host}:3000`);
+      if (!isGithubPagesHost()) {
+        candidates.push(`http://${host}:3000`);
+      }
       candidates.push('http://localhost:3000');
       candidates.push('http://127.0.0.1:3000');
 
@@ -782,7 +866,13 @@
 
     function toUserMessage(error, fallbackMessage) {
       if (error && error.message === 'API_UNAVAILABLE') {
+        if (isGithubPagesHost()) {
+          return 'Site no GitHub Pages sem backend conectado. Use ?apiBase=https://seu-backend para salvar no servidor.';
+        }
         return 'API indisponivel: dados salvos em modo local neste navegador.';
+      }
+      if (error && error.message === 'EMAIL_REQUIRES_API') {
+        return 'Para concluir a reserva com envio de e-mail, conecte uma API backend usando ?apiBase=https://seu-backend.';
       }
       if (error && error.name === 'TypeError') {
         return 'Falha de conexao com o servidor. Verifique se o backend (node server.js) esta rodando.';
@@ -831,15 +921,7 @@
 
     async function saveReserva(reserva) {
       if (state.storageMode === 'local') {
-        const reservas = readLocalArray(LOCAL_RESERVAS_KEY);
-        const created = {
-          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          ...reserva,
-          createdAt: new Date().toISOString()
-        };
-        reservas.push(created);
-        writeLocalArray(LOCAL_RESERVAS_KEY, reservas);
-        return created;
+        throw new Error('EMAIL_REQUIRES_API');
       }
 
       const response = await fetchWithApi('/api/reservas', {
@@ -851,11 +933,37 @@
         throw new Error(await readApiError(response, 'Nao foi possivel salvar a reserva.'));
       }
       const result = await response.json();
-      return result.reserva;
+      return {
+        reserva: result.reserva,
+        emailConfirmation: result.emailConfirmation || { sent: false, reason: 'UNAVAILABLE' }
+      };
+    }
+
+    async function buildReservationFeedback(reserva, saveResult) {
+      if (window.ReservationSubmitActions && typeof window.ReservationSubmitActions.run === 'function') {
+        return window.ReservationSubmitActions.run({
+          reserva,
+          saveResult,
+          actions: state.postSubmitActions
+        });
+      }
+
+      if (saveResult && saveResult.emailConfirmation && saveResult.emailConfirmation.sent) {
+        return {
+          feedbackType: 'success',
+          feedbackMessage: `Reserva registrada com sucesso! Confirmacao enviada para ${reserva.email}.`
+        };
+      }
+
+      return {
+        feedbackType: 'error',
+        feedbackMessage: 'Falha no envio do e-mail de confirmacao. Tente novamente em instantes.'
+      };
     }
 
     function updatePeriodOptions() {
       const date = dataInput.value;
+      const hadSelectedPeriod = Boolean(periodInput.value);
       let selectedStillAvailable = false;
 
       periodCards.forEach(card => {
@@ -882,6 +990,9 @@
 
       if (!selectedStillAvailable) {
         periodInput.value = '';
+        if (hadSelectedPeriod) {
+          renderSelectedInfo();
+        }
       }
     }
 
@@ -1002,17 +1113,82 @@
       });
     }
 
+    function formatDateUs(dateValue) {
+      if (!isValidDateString(dateValue)) {
+        return dateValue;
+      }
+      const [year, month, day] = dateValue.split('-');
+      return `${month}/${day}/${year}`;
+    }
+
     function renderSelectedInfo() {
       if (!state.selectedDay) {
         selectedDateText.textContent = 'Clique em um dia para escolher a data*';
         return;
       }
-      selectedDateText.textContent = `Data selecionada: ${state.selectedDay}`;
+      const period = periodInput.value;
+      const formattedDate = formatDateUs(state.selectedDay);
+
+      if (!period) {
+        selectedDateText.textContent = `Data selecionada: ${formattedDate}`;
+        return;
+      }
+
+      const periodLabel = bookingPeriods.find(item => item.value === period)?.label || period;
+      selectedDateText.textContent = `Data selecionada: ${formattedDate} | Período: ${periodLabel}`;
+    }
+
+    function isValidEmailAddress(value) {
+      if (typeof value !== 'string') {
+        return false;
+      }
+
+      const email = value.trim().toLowerCase();
+      if (!email || email.length > 254) {
+        return false;
+      }
+
+      const basicRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!basicRegex.test(email)) {
+        return false;
+      }
+
+      const [localPart, domain] = email.split('@');
+      if (!localPart || !domain) {
+        return false;
+      }
+
+      if (localPart.length > 64 || domain.length > 253) {
+        return false;
+      }
+
+      if (email.includes('..') || localPart.startsWith('.') || localPart.endsWith('.')) {
+        return false;
+      }
+
+      if (domain.startsWith('-') || domain.endsWith('-') || domain.startsWith('.') || domain.endsWith('.')) {
+        return false;
+      }
+
+      if (!/^[a-z0-9.-]+$/.test(domain)) {
+        return false;
+      }
+
+      const domainParts = domain.split('.').filter(Boolean);
+      if (domainParts.length < 2) {
+        return false;
+      }
+
+      const tld = domainParts[domainParts.length - 1];
+      if (!/^[a-z]{2,}$/.test(tld)) {
+        return false;
+      }
+
+      return true;
     }
 
     function validateReserva(reserva) {
       const errors = [];
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       const phoneRegex = /^[0-9()+\-\s]{8,20}$/;
 
       if (!reserva.nomePiloto || reserva.nomePiloto.length < 2 || reserva.nomePiloto.length > 120) {
@@ -1033,11 +1209,27 @@
       if (!bookingPeriods.some(item => item.value === reserva.periodo)) {
         errors.push('Escolha Manhã ou Tarde.');
       }
-      if (!emailRegex.test(reserva.email || '')) {
+      if (!isValidEmailAddress(reserva.email || '')) {
         errors.push('Informe um e-mail valido.');
       }
       if (!phoneRegex.test(reserva.telefone || '')) {
         errors.push('Informe um telefone valido (8-20 caracteres).');
+      }
+      const ageNumber = Number.parseInt(reserva.age, 10);
+      if (!Number.isInteger(ageNumber) || ageNumber < 1 || ageNumber > 120) {
+        errors.push('Informe a idade do driver (1-120).');
+      }
+      if (!reserva.height || reserva.height.length < 2 || reserva.height.length > 40) {
+        errors.push('Informe a height do driver.');
+      }
+      if (!reserva.weight || reserva.weight.length < 2 || reserva.weight.length > 40) {
+        errors.push('Informe a weight do driver.');
+      }
+      if (!reserva.waist || reserva.waist.length < 1 || reserva.waist.length > 40) {
+        errors.push('Informe a waist do driver.');
+      }
+      if (!['Sim', 'Nao'].includes(reserva.kartingExperience || '')) {
+        errors.push('Informe se o driver ja tem experiencia com kart (Sim ou Nao).');
       }
       return errors;
     }
@@ -1069,8 +1261,15 @@
         data: dataInput.value,
         periodo: periodInput.value,
         email: document.getElementById('email').value.trim(),
-        telefone: document.getElementById('telefone').value.trim()
+        telefone: document.getElementById('telefone').value.trim(),
+        age: document.getElementById('age').value.trim(),
+        height: document.getElementById('height').value.trim(),
+        weight: document.getElementById('weight').value.trim(),
+        waist: document.getElementById('waist').value.trim(),
+        kartingExperience: document.getElementById('kartingExperience').value.trim()
       };
+
+      reserva.serviceDatesForMonth = `${formatDateUs(reserva.data)} | ${bookingPeriods.find(item => item.value === reserva.periodo)?.label || reserva.periodo}`;
 
       // Compatibilidade com visualizações antigas do painel admin.
       reserva.nome = reserva.nomePiloto;
@@ -1101,11 +1300,18 @@
         submitButton.disabled = true;
         setFeedback(formFeedback, 'info', 'Salvando reserva...');
 
-        const created = await saveReserva(reserva);
-        state.reservas.push(created);
+        const saveResult = await saveReserva(reserva);
+        state.reservas.push(saveResult.reserva);
         rebuildPeriodIndex();
         resetFormState();
-        setFeedback(formFeedback, 'success', 'Reserva registrada com sucesso!');
+
+        const postSubmitResult = await buildReservationFeedback(reserva, saveResult);
+        const feedbackType = (postSubmitResult && postSubmitResult.feedbackType) || 'success';
+        const feedbackMessage =
+          (postSubmitResult && postSubmitResult.feedbackMessage) ||
+          'Reserva registrada com sucesso!';
+
+        setFeedback(formFeedback, feedbackType, feedbackMessage);
       } catch (error) {
         setFeedback(formFeedback, 'error', toUserMessage(error, 'Falha ao salvar a reserva.'));
       } finally {
@@ -1132,6 +1338,7 @@
           periodCards.forEach(item => item.classList.remove('active'));
           card.classList.add('active');
           periodInput.value = card.dataset.period;
+          renderSelectedInfo();
           renderCalendar();
         });
       });
@@ -1166,7 +1373,11 @@
         if (hasApi) {
           setFeedback(formFeedback, 'info', '');
         } else {
-          setFeedback(formFeedback, 'error', 'API indisponivel. Usando modo local neste navegador.');
+          if (isGithubPagesHost()) {
+            setFeedback(formFeedback, 'info', 'GitHub Pages detectado: sem backend ativo, dados ficam locais. Para API, use ?apiBase=https://seu-backend.');
+          } else {
+            setFeedback(formFeedback, 'error', 'API indisponivel. Usando modo local neste navegador.');
+          }
         }
       } catch (error) {
         refreshCalendarUi();

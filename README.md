@@ -65,6 +65,106 @@ Opcional:
 - `FIREBASE_PROJECT_ID` (default: `calendar-urace-db`)
 - `STORAGE_MODE=local` para forçar persistência em arquivo JSON local.
 
+## Confirmação de reserva por e-mail
+
+Ao criar uma reserva (`POST /api/reservas`), o backend tenta enviar um e-mail de confirmação para o mesmo e-mail informado no formulário.
+
+Regra atual: a reserva so e concluida com sucesso quando o e-mail de confirmacao e enviado.
+Se o envio falhar, a API retorna erro e a reserva nao e persistida.
+
+Configure as variáveis SMTP no ambiente do servidor:
+
+- `SMTP_HOST` (ex.: `smtp.gmail.com`)
+- `SMTP_PORT` (ex.: `587`)
+- `SMTP_SECURE` (`true` para SSL direto, geralmente porta 465; `false` para STARTTLS)
+- `SMTP_USER` (usuário SMTP)
+- `SMTP_PASS` (senha/app password SMTP)
+- `SMTP_FROM` (remetente exibido; se ausente, usa `SMTP_USER`)
+- `SMTP_REPLY_TO` (opcional)
+
+Se SMTP nao estiver configurado, a API recusara novas reservas ate a configuracao ser corrigida.
+
+## Automação: Asana + DocuSign após reserva
+
+Ao clicar em `Enviar reserva`, após salvar no backend, o sistema executa este fluxo:
+
+1. Criar tarefa no Asana (projeto U-RACE).
+2. Acionar webhook para envio de DocuSign ao cliente.
+3. Garantir as subtarefas operacionais padrão no Asana.
+4. Marcar `Signed waiver?` como concluída quando o DocuSign for disparado com sucesso.
+
+### Variáveis para Asana
+
+- `ASANA_PERSONAL_ACCESS_TOKEN` (token pessoal da API Asana)
+- `ASANA_PROJECT_GID` (GID do projeto U-RACE)
+- `ASANA_SECTION_GID` (opcional, seção onde a tarefa será criada)
+- `ASANA_TASK_TEMPLATE_NAME` (default: `Session Setup [DRIVER + SERVICE]`)
+- `ASANA_TASK_TEMPLATE_GID` (opcional; se informado, força esse template direto)
+
+O backend tenta instanciar a tarefa via template `Session Setup [DRIVER + SERVICE]`.
+
+Descrição preenchida automaticamente na tarefa:
+
+- `Service Dates for this Month:`
+- `Age:`
+- `Height:`
+- `Weight:`
+- `Waist:`
+- `Responsible:`
+- `Email:`
+- `Phone:`
+- `Karting Experience:`
+
+Subtarefas automatizadas no Asana:
+
+- `Enviado Security Deposit?`
+- `Signed waiver?`
+- `Pago Security Deposit/Driver pass?`
+- `Comprar Driver Pass?`
+- `Enviar Driver Pass para o cliente`
+- `Service Order`
+- `Feedback about the driver/session`
+- `Payment has been completed (invoice)?`
+
+### Variáveis para DocuSign (via webhook)
+
+- `DOCUSIGN_WEBHOOK_URL` (endpoint que recebe os dados da reserva e dispara o DocuSign)
+- `DOCUSIGN_WEBHOOK_TOKEN` (opcional, enviado como Bearer token no header Authorization)
+
+Payload enviado ao webhook DocuSign:
+
+```json
+{
+  "source": "calendar-reserva-site",
+  "reserva": {
+    "id": "...",
+    "nomePiloto": "...",
+    "responsavelPiloto": "...",
+    "servico": "...",
+    "data": "YYYY-MM-DD",
+    "periodo": "manha|tarde",
+    "email": "...",
+    "telefone": "..."
+  },
+  "asanaTask": {
+    "created": true,
+    "taskGid": "..."
+  },
+  "sentAt": "ISO_DATE"
+}
+```
+
+Se Asana/DocuSign não estiver configurado, a reserva continua sendo salva normalmente e o backend retorna o status de automação no JSON da resposta.
+
+Campos opcionais aceitos no `POST /api/reservas` para preencher a descrição do Asana:
+
+- `serviceDatesForMonth`
+- `age`
+- `height`
+- `weight`
+- `waist`
+- `kartingExperience`
+
 ## Como rodar
 
 1. Instalar dependências:
@@ -74,6 +174,19 @@ Opcional:
 3. Abrir no navegador:
   - Cliente: `http://localhost:3000/`
   - Admin: `http://localhost:3000/admin/`
+
+## Publicacao no GitHub Pages
+
+Quando o frontend roda no GitHub Pages (`*.github.io`), ele nao consegue acessar automaticamente `localhost:3000` do seu computador.
+
+Nessa situacao, o site entra em modo local no navegador (localStorage) e mostra um aviso informativo.
+
+Para usar uma API backend publicada (Render, Railway, VPS etc.), abra a URL com o parametro `apiBase`:
+
+- Cliente: `https://SEU_USUARIO.github.io/SEU_REPO/Calendar.html?apiBase=https://seu-backend.com`
+- Admin: `https://SEU_USUARIO.github.io/SEU_REPO/Admin.html?apiBase=https://seu-backend.com`
+
+O valor de `apiBase` valido fica salvo no navegador e sera reutilizado nas proximas visitas.
 
 ## APIs
 
@@ -98,3 +211,7 @@ Opcional:
 - Se `STORAGE_MODE=firestore`, os dados ficam persistidos no Firestore.
 - Se `STORAGE_MODE=local`, os dados ficam nos arquivos JSON dentro de `data/`.
 - Em produção, prefira Firestore para maior confiabilidade e consistência.
+
+## Workflow visual do processo
+
+- Veja o fluxo completo em `docs/workflows/reservation-automation-workflow.md`.

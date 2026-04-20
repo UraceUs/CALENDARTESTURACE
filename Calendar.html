@@ -611,6 +611,9 @@
 
       if (!selectedStillAvailable) {
         periodInput.value = '';
+        if (hadSelectedPeriod) {
+          renderSelectedInfo();
+        }
       }
     }
 
@@ -696,12 +699,29 @@
       });
     }
 
+    function formatDateUs(dateValue) {
+      if (!isValidDateString(dateValue)) {
+        return dateValue;
+      }
+      const [year, month, day] = dateValue.split('-');
+      return `${month}/${day}/${year}`;
+    }
+
     function renderSelectedInfo() {
       if (!state.selectedDay) {
         selectedDateText.textContent = 'Clique em um dia para escolher a data*';
         return;
       }
-      selectedDateText.textContent = `Data selecionada: ${state.selectedDay}`;
+      const period = periodInput.value;
+      const formattedDate = formatDateUs(state.selectedDay);
+
+      if (!period) {
+        selectedDateText.textContent = `Data selecionada: ${formattedDate}`;
+        return;
+      }
+
+      const periodLabel = bookingPeriods.find(item => item.value === period)?.label || period;
+      selectedDateText.textContent = `Data selecionada: ${formattedDate} | Período: ${periodLabel}`;
     }
 
     function validateReserva(reserva) {
@@ -806,6 +826,7 @@
           periodCards.forEach(item => item.classList.remove('active'));
           card.classList.add('active');
           periodInput.value = card.dataset.period;
+          renderSelectedInfo();
           renderCalendar();
         });
       });

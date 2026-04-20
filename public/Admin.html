@@ -584,6 +584,7 @@
     const LOCAL_RESERVAS_KEY = 'calendar_reservas';
     const LOCAL_DISPONIBILIDADE_KEY = 'calendar_disponibilidade';
     const LOCAL_CAPACIDADE_KEY = 'calendar_capacidade';
+    const LOCAL_API_BASE_KEY = 'calendar_api_base';
 
     const adminMonths = document.getElementById('adminMonths');
     const adminDaysGrid = document.getElementById('adminDaysGrid');
@@ -610,16 +611,73 @@
       target.textContent = message || '';
     }
 
+    function isGithubPagesHost() {
+      return (window.location.hostname || '').toLowerCase().endsWith('github.io');
+    }
+
+    function normalizeApiBase(value) {
+      if (!value || typeof value !== 'string') {
+        return '';
+      }
+
+      const trimmed = value.trim().replace(/\/$/, '');
+      if (!trimmed) {
+        return '';
+      }
+
+      if (!/^https?:\/\//i.test(trimmed)) {
+        return '';
+      }
+
+      return trimmed;
+    }
+
+    function getConfiguredApiBase() {
+      try {
+        const params = new URLSearchParams(window.location.search || '');
+        const paramApiBase = normalizeApiBase(params.get('apiBase') || '');
+        if (paramApiBase) {
+          localStorage.setItem(LOCAL_API_BASE_KEY, paramApiBase);
+          return paramApiBase;
+        }
+      } catch (error) {
+        console.error('Falha ao ler apiBase da URL:', error);
+      }
+
+      const windowApiBase = normalizeApiBase(window.CALENDAR_API_BASE || '');
+      if (windowApiBase) {
+        return windowApiBase;
+      }
+
+      try {
+        const storedApiBase = normalizeApiBase(localStorage.getItem(LOCAL_API_BASE_KEY) || '');
+        if (storedApiBase) {
+          return storedApiBase;
+        }
+      } catch (error) {
+        console.error('Falha ao ler apiBase salvo:', error);
+      }
+
+      return '';
+    }
+
     function getApiCandidates() {
       const origin = window.location.origin;
       const host = window.location.hostname || 'localhost';
       const candidates = [];
 
+      const configuredApiBase = getConfiguredApiBase();
+      if (configuredApiBase) {
+        candidates.push(configuredApiBase);
+      }
+
       if (window.location.port === '3000') {
         candidates.push(origin);
       }
 
-      candidates.push(`http://${host}:3000`);
+      if (!isGithubPagesHost()) {
+        candidates.push(`http://${host}:3000`);
+      }
       candidates.push('http://localhost:3000');
       candidates.push('http://127.0.0.1:3000');
 
@@ -1373,7 +1431,11 @@
         if (hasApi) {
           setFeedback(reservationsFeedback, '', '');
         } else {
-          setFeedback(reservationsFeedback, 'error', 'API indisponivel. Usando modo local neste navegador.');
+          if (isGithubPagesHost()) {
+            setFeedback(reservationsFeedback, 'info', 'GitHub Pages detectado: sem backend ativo, dados ficam locais. Para API, use ?apiBase=https://seu-backend.');
+          } else {
+            setFeedback(reservationsFeedback, 'error', 'API indisponivel. Usando modo local neste navegador.');
+          }
         }
       } catch (error) {
         setFeedback(reservationsFeedback, 'error', error.message || 'Falha ao carregar painel admin.');
