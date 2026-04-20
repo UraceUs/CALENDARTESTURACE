@@ -1374,9 +1374,9 @@
           setFeedback(formFeedback, 'info', '');
         } else {
           if (isGithubPagesHost()) {
-            setFeedback(formFeedback, 'info', 'GitHub Pages detectado: sem backend ativo, dados ficam locais. Para API, use ?apiBase=https://seu-backend.');
+            setFeedback(formFeedback, 'info', '');
           } else {
-            setFeedback(formFeedback, 'error', 'API indisponivel. Usando modo local neste navegador.');
+            setFeedback(formFeedback, 'info', 'API indisponivel. Usando modo local neste navegador.');
           }
         }
       } catch (error) {

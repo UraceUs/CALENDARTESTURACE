@@ -1432,9 +1432,9 @@
           setFeedback(reservationsFeedback, '', '');
         } else {
           if (isGithubPagesHost()) {
-            setFeedback(reservationsFeedback, 'info', 'GitHub Pages detectado: sem backend ativo, dados ficam locais. Para API, use ?apiBase=https://seu-backend.');
+            setFeedback(reservationsFeedback, 'info', '');
           } else {
-            setFeedback(reservationsFeedback, 'error', 'API indisponivel. Usando modo local neste navegador.');
+            setFeedback(reservationsFeedback, 'info', 'API indisponivel. Usando modo local neste navegador.');
           }
         }
       } catch (error) {
