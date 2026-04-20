@@ -8,10 +8,7 @@ const nodemailer = require('nodemailer');
 const PORT = process.env.PORT || 3000;
 const publicFile = path.join(__dirname, 'public', 'Calendar.html');
 const adminFile = path.join(__dirname, 'public', 'Admin.html');
-const reservaFile = path.join(__dirname, 'data', 'Reservation.json');
-const disponibilidadeFile = path.join(__dirname, 'data', 'Availability.json');
-const capacidadeFile = path.join(__dirname, 'data', 'Capacity.json');
-const STORAGE_MODE = (process.env.STORAGE_MODE || 'firestore').toLowerCase();
+const STORAGE_MODE = 'firestore';
 const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'calendar-urace-db';
 const FIREBASE_SERVICE_ACCOUNT_FILE =
   process.env.FIREBASE_SERVICE_ACCOUNT_FILE || path.join(__dirname, 'firebase-service-account.json');
@@ -61,11 +58,6 @@ const firestoreState = {
 let emailTransporter = null;
 
 function initFirestore() {
-  if (STORAGE_MODE !== 'firestore') {
-    firestoreState.reason = 'STORAGE_MODE=local';
-    return;
-  }
-
   try {
     if (!admin.apps.length) {
       const rawServiceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
@@ -203,7 +195,7 @@ function getDb() {
 }
 
 function ensureStorageReady() {
-  return STORAGE_MODE === 'local' || firestoreState.enabled;
+  return firestoreState.enabled;
 }
 
 function isCredentialError(error) {
@@ -1309,7 +1301,7 @@ function toggleDisponibilidade(disponibilidade, bloqueio) {
   return disponibilidade;
 }
 
-const server = http.createServer(async (req, res) => {
+async function requestHandler(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const moveMatch = url.pathname.match(/^\/api\/reservas\/([^/]+)\/move$/);
   const deleteMatch = url.pathname.match(/^\/api\/reservas\/([^/]+)$/);
@@ -1626,9 +1618,6 @@ const server = http.createServer(async (req, res) => {
         }
 
         const updated = await setDisponibilidade(bloqueio);
-        if (STORAGE_MODE === 'local') {
-          await writeLocalArray(disponibilidadeFile, updated);
-        }
 
         sendJson(res, { disponibilidade: updated }, 200);
       } catch (error) {
@@ -1763,8 +1752,20 @@ const server = http.createServer(async (req, res) => {
 
   res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
   res.end('Não encontrado');
-});
+}
 
-server.listen(PORT, () => {
-  console.log(`Servidor rodando em http://localhost:${PORT}`);
-});
+function createServer() {
+  return http.createServer(requestHandler);
+}
+
+if (require.main === module) {
+  const server = createServer();
+  server.listen(PORT, () => {
+    console.log(`Servidor rodando em http://localhost:${PORT}`);
+  });
+}
+
+module.exports = {
+  createServer,
+  requestHandler
+};
