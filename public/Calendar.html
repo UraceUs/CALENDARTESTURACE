@@ -363,6 +363,7 @@
 
     .form-panel input,
     .form-panel select,
+    .form-panel textarea,
     .form-panel button[type="submit"] {
       width: 100%;
       padding: 12px 14px;
@@ -529,6 +530,9 @@
                 <option value="Nao">Nao</option>
               </select>
             </label>
+            <label id="experienceDescriptionField" style="display: none;">descreva sua experiencia
+              <textarea id="experienceDescription" rows="3" maxlength="500" placeholder="Conte brevemente sua experiencia"></textarea>
+            </label>
             <button type="submit">Enviar reserva</button>
             <p class="feedback info" id="formFeedback" aria-live="polite"></p>
           </form>
@@ -583,6 +587,9 @@
     const form = document.getElementById('reservaForm');
     const formFeedback = document.getElementById('formFeedback');
     const submitButton = form.querySelector('button[type="submit"]');
+    const kartingExperienceInput = document.getElementById('kartingExperience');
+    const experienceDescriptionField = document.getElementById('experienceDescriptionField');
+    const experienceDescriptionInput = document.getElementById('experienceDescription');
     const serviceCards = document.querySelectorAll('.service-card');
     const periodCards = document.querySelectorAll('.period-card');
 
@@ -1231,7 +1238,23 @@
       if (!['Sim', 'Nao'].includes(reserva.kartingExperience || '')) {
         errors.push('Informe se o driver ja tem experiencia com kart (Sim ou Nao).');
       }
+      if ((reserva.kartingExperience || '') === 'Sim') {
+        const description = (reserva.experienceDescription || '').trim();
+        if (description.length < 5 || description.length > 500) {
+          errors.push('Descreva sua experiencia (5-500 caracteres) quando marcar Sim.');
+        }
+      }
       return errors;
+    }
+
+    function toggleExperienceDescriptionField() {
+      const shouldShow = (kartingExperienceInput.value || '') === 'Sim';
+      experienceDescriptionField.style.display = shouldShow ? 'block' : 'none';
+      experienceDescriptionInput.required = shouldShow;
+
+      if (!shouldShow) {
+        experienceDescriptionInput.value = '';
+      }
     }
 
     function resetFormState() {
@@ -1242,6 +1265,7 @@
       state.selectedDay = null;
       serviceCards.forEach(card => card.classList.remove('active'));
       periodCards.forEach(card => card.classList.remove('active'));
+      toggleExperienceDescriptionField();
       renderSelectedInfo();
       renderCalendar();
       updatePeriodOptions();
@@ -1266,7 +1290,8 @@
         height: document.getElementById('height').value.trim(),
         weight: document.getElementById('weight').value.trim(),
         waist: document.getElementById('waist').value.trim(),
-        kartingExperience: document.getElementById('kartingExperience').value.trim()
+        kartingExperience: document.getElementById('kartingExperience').value.trim(),
+        experienceDescription: document.getElementById('experienceDescription').value.trim()
       };
 
       reserva.serviceDatesForMonth = `${formatDateUs(reserva.data)} | ${bookingPeriods.find(item => item.value === reserva.periodo)?.label || reserva.periodo}`;
@@ -1343,6 +1368,8 @@
         });
       });
 
+      kartingExperienceInput.addEventListener('change', toggleExperienceDescriptionField);
+
       form.addEventListener('submit', handleSubmit);
     }
 
@@ -1385,6 +1412,7 @@
       }
 
       bindEvents();
+      toggleExperienceDescriptionField();
     }
 
     init();

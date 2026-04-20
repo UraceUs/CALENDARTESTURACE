@@ -343,7 +343,8 @@ function buildAsanaTaskDescription(reserva) {
     `Responsible: ${asanaProfileValue(reserva.responsavelPiloto)}`,
     `Email: ${asanaProfileValue(reserva.email)}`,
     `Phone: ${asanaProfileValue(reserva.telefone)}`,
-    `Karting Experience: ${asanaProfileValue(reserva.kartingExperience)}`
+    `Karting Experience: ${asanaProfileValue(reserva.kartingExperience)}`,
+    `Experience Description: ${asanaProfileValue(reserva.experienceDescription)}`
   ].join('\n');
 }
 
@@ -811,6 +812,7 @@ async function readReservas() {
       weight: data.weight || '',
       waist: data.waist || '',
       kartingExperience: data.kartingExperience || '',
+      experienceDescription: data.experienceDescription || data.descrevaSuaExperiencia || '',
       createdAt: asIsoDateTime(data.createdAt) || asIsoDateTime(data.created_at),
       movedAt: asIsoDateTime(data.movedAt) || null
     });
@@ -953,6 +955,7 @@ async function moveReservaById(id, data, periodo) {
     weight: updated.weight || '',
     waist: updated.waist || '',
     kartingExperience: updated.kartingExperience || '',
+    experienceDescription: updated.experienceDescription || updated.descrevaSuaExperiencia || '',
     createdAt: asIsoDateTime(updated.createdAt) || null,
     movedAt: asIsoDateTime(updated.movedAt) || new Date().toISOString()
   };
@@ -1126,6 +1129,9 @@ function validateReserva(payload) {
   const weight = normalizeText(payload.weight);
   const waist = normalizeText(payload.waist);
   const kartingExperience = normalizeText(payload.kartingExperience);
+  const experienceDescription = normalizeText(
+    payload.experienceDescription || payload.descrevaSuaExperiencia
+  );
   const ageNumber = Number.parseInt(age, 10);
 
   if (!nomePiloto || nomePiloto.length < 2 || nomePiloto.length > 120) {
@@ -1176,6 +1182,10 @@ function validateReserva(payload) {
     errors.push('Campo kartingExperience deve ser Sim ou Nao.');
   }
 
+  if (kartingExperience === 'Sim' && (experienceDescription.length < 5 || experienceDescription.length > 500)) {
+    errors.push('Campo experienceDescription deve ter entre 5 e 500 caracteres quando kartingExperience for Sim.');
+  }
+
   return {
     errors,
     reserva: {
@@ -1192,7 +1202,8 @@ function validateReserva(payload) {
       height,
       weight,
       waist,
-      kartingExperience
+      kartingExperience,
+      experienceDescription
     }
   };
 }
