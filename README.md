@@ -12,9 +12,8 @@ Sistema de agendamento com duas interfaces:
   - `public/Calendar.html`: cliente
   - `public/Admin.html`: painel admin
   - `public/admin/index.html`: atalho para `/admin/`
-- `data/`: arquivos historicos de suporte (modo local desativado)
-  - `data/Reservation.json`
-  - `data/Availability.json`
+- `tests/`: testes automatizados (API e E2E)
+- `docs/`: fluxos e documentacao operacional
 
 ## Funcionalidades por perfil
 

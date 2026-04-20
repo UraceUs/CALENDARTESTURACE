@@ -8,7 +8,6 @@ const nodemailer = require('nodemailer');
 const PORT = process.env.PORT || 3000;
 const publicFile = path.join(__dirname, 'public', 'Calendar.html');
 const adminFile = path.join(__dirname, 'public', 'Admin.html');
-const STORAGE_MODE = 'firestore';
 const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'calendar-urace-db';
 const FIREBASE_SERVICE_ACCOUNT_FILE =
   process.env.FIREBASE_SERVICE_ACCOUNT_FILE || path.join(__dirname, 'firebase-service-account.json');
@@ -169,26 +168,6 @@ function parseJsonBody(req) {
 
     req.on('error', () => reject(new Error('REQUEST_STREAM_ERROR')));
   });
-}
-
-async function readLocalArray(filePath) {
-  try {
-    const data = await fs.promises.readFile(filePath, 'utf8');
-    if (!data) {
-      return [];
-    }
-    const json = JSON.parse(data);
-    return Array.isArray(json) ? json : [];
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      return [];
-    }
-    throw error;
-  }
-}
-
-async function writeLocalArray(filePath, data) {
-  await fs.promises.writeFile(filePath, JSON.stringify(data, null, 2), 'utf8');
 }
 
 function getDb() {
@@ -868,10 +847,6 @@ async function sendSupportReservationNotificationEmail(reserva) {
 }
 
 async function readReservas() {
-  if (STORAGE_MODE === 'local') {
-    return readLocalArray(reservaFile);
-  }
-
   const snapshot = await getDb().collection('reservas').get();
   const reservas = [];
   snapshot.forEach(doc => {
@@ -913,10 +888,6 @@ async function readReservas() {
 }
 
 async function readDisponibilidade() {
-  if (STORAGE_MODE === 'local') {
-    return readLocalArray(disponibilidadeFile);
-  }
-
   const snapshot = await getDb().collection('disponibilidade').get();
   const data = [];
   snapshot.forEach(doc => {
@@ -929,26 +900,6 @@ async function readDisponibilidade() {
 }
 
 async function readCapacidades() {
-  if (STORAGE_MODE === 'local') {
-    const capacidades = await readLocalArray(capacidadeFile);
-    return capacidades.filter(item => {
-      if (!item) {
-        return false;
-      }
-
-      if (!isValidDateString(item.data) || !ALLOWED_PERIODS.has(item.periodo)) {
-        return false;
-      }
-
-      const vagas = Number(item.vagas);
-      return Number.isInteger(vagas) && vagas > 0;
-    }).map(item => ({
-      data: item.data,
-      periodo: item.periodo,
-      vagas: Number(item.vagas)
-    }));
-  }
-
   const snapshot = await getDb().collection('capacidade').get();
   const data = [];
   snapshot.forEach(doc => {
@@ -962,18 +913,6 @@ async function readCapacidades() {
 }
 
 async function createReserva(reserva) {
-  if (STORAGE_MODE === 'local') {
-    const reservas = await readLocalArray(reservaFile);
-    const reservaToSave = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      ...reserva,
-      createdAt: new Date().toISOString()
-    };
-    reservas.push(reservaToSave);
-    await writeLocalArray(reservaFile, reservas);
-    return reservaToSave;
-  }
-
   const ref = await getDb().collection('reservas').add({
     ...reserva,
     createdAt: admin.firestore.FieldValue.serverTimestamp()
@@ -990,23 +929,6 @@ async function createReserva(reserva) {
 }
 
 async function moveReservaById(id, data, periodo) {
-  if (STORAGE_MODE === 'local') {
-    const reservas = await readLocalArray(reservaFile);
-    const targetIndex = reservas.findIndex(item => item && item.id === id);
-    if (targetIndex === -1) {
-      return null;
-    }
-    const updated = {
-      ...reservas[targetIndex],
-      data,
-      periodo,
-      movedAt: new Date().toISOString()
-    };
-    reservas[targetIndex] = updated;
-    await writeLocalArray(reservaFile, reservas);
-    return updated;
-  }
-
   const ref = getDb().collection('reservas').doc(id);
   const snapshot = await ref.get();
   if (!snapshot.exists) {
@@ -1045,17 +967,6 @@ async function moveReservaById(id, data, periodo) {
 }
 
 async function deleteReservaById(id) {
-  if (STORAGE_MODE === 'local') {
-    const reservas = await readLocalArray(reservaFile);
-    const targetIndex = reservas.findIndex(item => item && item.id === id);
-    if (targetIndex === -1) {
-      return false;
-    }
-    reservas.splice(targetIndex, 1);
-    await writeLocalArray(reservaFile, reservas);
-    return true;
-  }
-
   const ref = getDb().collection('reservas').doc(id);
   const snapshot = await ref.get();
   if (!snapshot.exists) {
@@ -1067,11 +978,6 @@ async function deleteReservaById(id) {
 }
 
 async function setDisponibilidade(bloqueio) {
-  if (STORAGE_MODE === 'local') {
-    const disponibilidade = await readLocalArray(disponibilidadeFile);
-    return toggleDisponibilidade(disponibilidade, bloqueio);
-  }
-
   const id = `${bloqueio.data}_${bloqueio.periodo}`;
   const ref = getDb().collection('disponibilidade').doc(id);
 
@@ -1089,22 +995,6 @@ async function setDisponibilidade(bloqueio) {
 }
 
 async function setCapacidade(data, periodo, vagas) {
-  if (STORAGE_MODE === 'local') {
-    const capacidades = await readLocalArray(capacidadeFile);
-    const targetIndex = capacidades.findIndex(
-      item => item && item.data === data && item.periodo === periodo
-    );
-
-    if (targetIndex === -1) {
-      capacidades.push({ data, periodo, vagas });
-    } else {
-      capacidades[targetIndex] = { data, periodo, vagas };
-    }
-
-    await writeLocalArray(capacidadeFile, capacidades);
-    return { data, periodo, vagas };
-  }
-
   const id = `${data}_${periodo}`;
   await getDb().collection('capacidade').doc(id).set({
     data,
@@ -1374,22 +1264,6 @@ function isBlocked(disponibilidade, data, periodo) {
     }
     return entry.periodo === 'all' || entry.periodo === periodo;
   });
-}
-
-function toggleDisponibilidade(disponibilidade, bloqueio) {
-  const targetIndex = disponibilidade.findIndex(
-    item => item && item.data === bloqueio.data && item.periodo === bloqueio.periodo
-  );
-
-  if (bloqueio.bloqueado) {
-    if (targetIndex === -1) {
-      disponibilidade.push({ data: bloqueio.data, periodo: bloqueio.periodo });
-    }
-  } else if (targetIndex !== -1) {
-    disponibilidade.splice(targetIndex, 1);
-  }
-
-  return disponibilidade;
 }
 
 async function requestHandler(req, res) {
