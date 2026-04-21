@@ -901,6 +901,24 @@ async function runPostReservaAutomation(reservaToSave, emailConfirmation) {
   };
 }
 
+function runPostReservaAutomationInBackground(reservaToSave, emailConfirmation) {
+  setImmediate(async () => {
+    try {
+      const automation = await runPostReservaAutomation(reservaToSave, emailConfirmation);
+      console.log(
+        'Automacao pos-reserva concluida:',
+        JSON.stringify({
+          reservaId: reservaToSave && reservaToSave.id ? reservaToSave.id : null,
+          asanaCreated: Boolean(automation && automation.asana && automation.asana.created),
+          docusignTriggered: Boolean(automation && automation.docusign && automation.docusign.triggered)
+        })
+      );
+    } catch (error) {
+      console.error('Falha na automacao pos-reserva (background):', error.message);
+    }
+  });
+}
+
 function buildReservationEmailHtml(reserva) {
   const formattedDate = formatDateBr(reserva.data);
   const label = periodLabel(reserva.periodo);
@@ -1574,7 +1592,10 @@ async function requestHandler(req, res) {
         }
 
         const reservaToSave = await createReserva(reserva);
-        const emailConfirmation = await sendReservaConfirmationEmail(reservaToSave);
+        const [emailConfirmation, supportNotification] = await Promise.all([
+          sendReservaConfirmationEmail(reservaToSave),
+          sendSupportReservationNotificationEmail(reservaToSave)
+        ]);
 
         if (!emailConfirmation.sent) {
           try {
@@ -1593,7 +1614,6 @@ async function requestHandler(req, res) {
           return;
         }
 
-        const supportNotification = await sendSupportReservationNotificationEmail(reservaToSave);
         if (!supportNotification.sent) {
           try {
             await deleteReservaById(reservaToSave.id);
@@ -1611,8 +1631,8 @@ async function requestHandler(req, res) {
           return;
         }
 
-        const automation = await runPostReservaAutomation(reservaToSave, emailConfirmation);
-        sendJson(res, { reserva: reservaToSave, emailConfirmation, supportNotification, automation }, 201);
+        sendJson(res, { reserva: reservaToSave, emailConfirmation, supportNotification }, 201);
+        runPostReservaAutomationInBackground(reservaToSave, emailConfirmation);
       } catch (error) {
         if (error.message === 'PAYLOAD_TOO_LARGE') {
           sendError(res, 413, 'PAYLOAD_TOO_LARGE', 'Corpo da requisicao muito grande.');
