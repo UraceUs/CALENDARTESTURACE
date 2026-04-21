@@ -224,4 +224,52 @@ describe('API routes', () => {
       expect.arrayContaining([{ data: '2026-06-11', periodo: 'tarde', vagas: 7 }])
     );
   });
+
+  it('POST /api/disponibilidade returns validation error for invalid period', async () => {
+    const response = await request(app)
+      .post('/api/disponibilidade')
+      .set('Content-Type', 'application/json')
+      .send({ data: '2026-06-10', periodo: 'noite', bloqueado: true });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      error: {
+        code: 'VALIDATION_ERROR'
+      }
+    });
+  });
+
+  it('POST /api/capacidade returns validation error for invalid quantity', async () => {
+    const response = await request(app)
+      .post('/api/capacidade')
+      .set('Content-Type', 'application/json')
+      .send({ data: '2026-06-11', periodo: 'manha', quantidade: 0 });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      error: {
+        code: 'VALIDATION_ERROR'
+      }
+    });
+  });
+
+  it('OPTIONS /api/reservas returns CORS preflight response', async () => {
+    const response = await request(app)
+      .options('/api/reservas');
+
+    expect(response.status).toBe(204);
+    expect(response.headers['access-control-allow-origin']).toBe('*');
+  });
+
+  it('DELETE /api/reservas/:id returns 404 when reservation does not exist', async () => {
+    const response = await request(app)
+      .delete('/api/reservas/inexistente');
+
+    expect(response.status).toBe(404);
+    expect(response.body).toMatchObject({
+      error: {
+        code: 'NOT_FOUND'
+      }
+    });
+  });
 });
