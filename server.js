@@ -64,6 +64,7 @@ const firestoreState = {
 };
 
 let emailTransporter = null;
+let emailTransporterInitPromise = null;
 
 function initFirestore() {
   try {
@@ -240,7 +241,41 @@ function getMissingEmailConfigFields() {
   return missing;
 }
 
-function getEmailTransporter() {
+async function resolveSmtpConnectionOptions() {
+  const defaultOptions = {
+    host: SMTP_HOST,
+    tlsServername: null,
+    resolvedAddress: null
+  };
+
+  const forceIpv4 = Number.isInteger(SMTP_FAMILY) ? SMTP_FAMILY === 4 : true;
+  if (!forceIpv4 || !SMTP_HOST || /^\d+\.\d+\.\d+\.\d+$/.test(SMTP_HOST)) {
+    return defaultOptions;
+  }
+
+  try {
+    const lookup = await dns.promises.lookup(SMTP_HOST, {
+      family: 4,
+      all: false,
+      verbatim: false
+    });
+
+    if (!lookup || !lookup.address) {
+      return defaultOptions;
+    }
+
+    return {
+      host: lookup.address,
+      tlsServername: SMTP_HOST,
+      resolvedAddress: lookup.address
+    };
+  } catch (error) {
+    console.warn('Falha ao resolver IPv4 do SMTP, usando host original:', error.message);
+    return defaultOptions;
+  }
+}
+
+async function getEmailTransporter() {
   if (!isEmailConfigured()) {
     return null;
   }
@@ -249,21 +284,46 @@ function getEmailTransporter() {
     return emailTransporter;
   }
 
-  emailTransporter = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: SMTP_SECURE,
-    family: Number.isInteger(SMTP_FAMILY) && SMTP_FAMILY > 0 ? SMTP_FAMILY : 4,
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
-    auth: {
-      user: SMTP_USER,
-      pass: SMTP_PASS
-    }
-  });
+  if (emailTransporterInitPromise) {
+    return emailTransporterInitPromise;
+  }
 
-  return emailTransporter;
+  emailTransporterInitPromise = (async () => {
+    const smtpConnection = await resolveSmtpConnectionOptions();
+
+    if (smtpConnection.resolvedAddress) {
+      console.log(`SMTP resolvido para IPv4 ${smtpConnection.resolvedAddress}.`);
+    }
+
+    const transportConfig = {
+      host: smtpConnection.host,
+      port: SMTP_PORT,
+      secure: SMTP_SECURE,
+      family: Number.isInteger(SMTP_FAMILY) && SMTP_FAMILY > 0 ? SMTP_FAMILY : 4,
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
+      auth: {
+        user: SMTP_USER,
+        pass: SMTP_PASS
+      }
+    };
+
+    if (smtpConnection.tlsServername) {
+      transportConfig.tls = {
+        servername: smtpConnection.tlsServername
+      };
+    }
+
+    emailTransporter = nodemailer.createTransport(transportConfig);
+    return emailTransporter;
+  })();
+
+  try {
+    return await emailTransporterInitPromise;
+  } finally {
+    emailTransporterInitPromise = null;
+  }
 }
 
 function formatDateBr(dateString) {
@@ -765,7 +825,7 @@ async function sendReservaConfirmationEmail(reserva) {
     return { sent: false, reason: 'EMAIL_MISSING' };
   }
 
-  const transporter = getEmailTransporter();
+  const transporter = await getEmailTransporter();
   if (!transporter) {
     const missingFields = getMissingEmailConfigFields();
     console.warn(`Envio de e-mail desativado: configure ${missingFields.join(', ')}.`);
@@ -830,7 +890,7 @@ async function sendSupportReservationNotificationEmail(reserva) {
     return { sent: false, reason: 'RESERVA_MISSING' };
   }
 
-  const transporter = getEmailTransporter();
+  const transporter = await getEmailTransporter();
   if (!transporter) {
     return { sent: false, reason: 'EMAIL_NOT_CONFIGURED' };
   }
