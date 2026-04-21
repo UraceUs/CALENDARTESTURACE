@@ -570,6 +570,10 @@
       manha: 'Manhã',
       tarde: 'Tarde',
       all: 'Dia todo'
+    const CANONICAL_API_BASES = [
+      'https://calendar-backend-production-a5ad.up.railway.app',
+      'https://calendar-backend-production-e7ba.up.railway.app'
+    ];
     };
 
     const state = {
@@ -672,6 +676,13 @@
     function getApiCandidates() {
       const origin = window.location.origin;
       const candidates = [];
+
+      CANONICAL_API_BASES.forEach(base => {
+        const normalized = normalizeApiBase(base);
+        if (normalized) {
+          candidates.push(normalized);
+        }
+      });
 
       const configuredApiBase = getConfiguredApiBase();
       if (configuredApiBase) {
