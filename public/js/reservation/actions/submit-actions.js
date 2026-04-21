@@ -17,9 +17,16 @@
       };
     }
 
+    if (emailConfirmation.pending) {
+      return {
+        type: 'success',
+        message: 'Reserva registrada com sucesso! A confirmacao sera enviada para ' + reserva.email + ' em instantes.'
+      };
+    }
+
     return {
-      type: 'error',
-      message: 'Falha no envio do e-mail de confirmacao. Tente novamente em instantes.'
+      type: 'success',
+      message: 'Reserva registrada com sucesso! O envio da confirmacao por e-mail sera processado separadamente.'
     };
   }
 

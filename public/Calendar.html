@@ -939,9 +939,16 @@
         };
       }
 
+      if (saveResult && saveResult.emailConfirmation && saveResult.emailConfirmation.pending) {
+        return {
+          feedbackType: 'success',
+          feedbackMessage: `Reserva registrada com sucesso! A confirmacao sera enviada para ${reserva.email} em instantes.`
+        };
+      }
+
       return {
-        feedbackType: 'error',
-        feedbackMessage: 'Falha no envio do e-mail de confirmacao. Tente novamente em instantes.'
+        feedbackType: 'success',
+        feedbackMessage: 'Reserva registrada com sucesso! O envio da confirmacao por e-mail sera processado separadamente.'
       };
     }
 

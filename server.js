@@ -935,6 +935,32 @@ function runSupportNotificationInBackground(reservaToSave) {
   });
 }
 
+function runConfirmationEmailInBackground(reservaToSave) {
+  setImmediate(async () => {
+    try {
+      const emailConfirmation = await sendReservaConfirmationEmail(reservaToSave);
+      if (!emailConfirmation.sent) {
+        console.error(
+          'Falha no envio de confirmacao (background):',
+          emailConfirmation.error || emailConfirmation.reason || 'UNKNOWN_EMAIL_ERROR'
+        );
+        return;
+      }
+
+      console.log(
+        'Confirmacao de reserva enviada em background:',
+        JSON.stringify({
+          reservaId: reservaToSave && reservaToSave.id ? reservaToSave.id : null,
+          messageId: emailConfirmation.messageId || null,
+          fallbackUsed: Boolean(emailConfirmation.fallbackUsed)
+        })
+      );
+    } catch (error) {
+      console.error('Falha no envio de confirmacao (background):', error.message);
+    }
+  });
+}
+
 function buildReservationEmailHtml(reserva) {
   const formattedDate = formatDateBr(reserva.data);
   const label = periodLabel(reserva.periodo);
@@ -1563,17 +1589,6 @@ async function requestHandler(req, res) {
       }
 
       try {
-        if (!isEmailConfigured()) {
-          const missingFields = getMissingEmailConfigFields();
-          sendError(
-            res,
-            503,
-            'EMAIL_SERVICE_NOT_CONFIGURED',
-            `Servico de e-mail indisponivel. Configure: ${missingFields.join(', ')}.`
-          );
-          return;
-        }
-
         const payload = await parseJsonBody(req);
         const { errors, reserva } = validateReserva(payload || {});
         if (errors.length > 0) {
@@ -1608,24 +1623,9 @@ async function requestHandler(req, res) {
         }
 
         const reservaToSave = await createReserva(reserva);
-        const emailConfirmation = await sendReservaConfirmationEmail(reservaToSave);
-
-        if (!emailConfirmation.sent) {
-          try {
-            await deleteReservaById(reservaToSave.id);
-          } catch (rollbackError) {
-            console.error('Falha ao desfazer reserva apos erro de e-mail:', rollbackError.message);
-          }
-
-          sendError(
-            res,
-            502,
-            'EMAIL_SEND_FAILED',
-            'Nao foi possivel enviar o e-mail de confirmacao. A reserva nao foi concluida.',
-            [emailConfirmation.error || emailConfirmation.reason || 'UNKNOWN_EMAIL_ERROR']
-          );
-          return;
-        }
+        const emailConfirmation = isEmailConfigured()
+          ? { sent: false, pending: true, reason: 'BACKGROUND_DELIVERY' }
+          : { sent: false, pending: false, reason: 'EMAIL_NOT_CONFIGURED' };
 
         sendJson(
           res,
@@ -1636,6 +1636,7 @@ async function requestHandler(req, res) {
           },
           201
         );
+        runConfirmationEmailInBackground(reservaToSave);
         runSupportNotificationInBackground(reservaToSave);
         runPostReservaAutomationInBackground(reservaToSave, emailConfirmation);
       } catch (error) {
