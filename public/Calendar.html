@@ -542,7 +542,7 @@
   </div>
 
   <script src="./runtime-config.js"></script>
-  <script src="./js/reservation/actions/submit-actions.js"></script>
+  <script src="./js/reservation/actions/submit-actions.js?v=20260421-2"></script>
   <script>
     const DEFAULT_MAX_RESERVATIONS_PER_PERIOD = 4;
     const API_REQUEST_TIMEOUT_MS = 60000;
@@ -924,14 +924,6 @@
     }
 
     async function buildReservationFeedback(reserva, saveResult) {
-      if (window.ReservationSubmitActions && typeof window.ReservationSubmitActions.run === 'function') {
-        return window.ReservationSubmitActions.run({
-          reserva,
-          saveResult,
-          actions: state.postSubmitActions
-        });
-      }
-
       if (saveResult && saveResult.emailConfirmation && saveResult.emailConfirmation.sent) {
         return {
           feedbackType: 'success',
