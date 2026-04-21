@@ -1407,7 +1407,7 @@ async function requestHandler(req, res) {
             502,
             'EMAIL_SEND_FAILED',
             'Nao foi possivel enviar o e-mail de confirmacao. A reserva nao foi concluida.',
-            [emailConfirmation.reason || 'UNKNOWN_EMAIL_ERROR']
+            [emailConfirmation.error || emailConfirmation.reason || 'UNKNOWN_EMAIL_ERROR']
           );
           return;
         }
@@ -1425,7 +1425,7 @@ async function requestHandler(req, res) {
             502,
             'SUPPORT_NOTIFICATION_FAILED',
             'Nao foi possivel enviar a notificacao de nova reserva para o suporte. A reserva nao foi concluida.',
-            [supportNotification.reason || 'UNKNOWN_SUPPORT_NOTIFICATION_ERROR']
+            [supportNotification.error || supportNotification.reason || 'UNKNOWN_SUPPORT_NOTIFICATION_ERROR']
           );
           return;
         }
