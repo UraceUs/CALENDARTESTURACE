@@ -919,6 +919,22 @@ function runPostReservaAutomationInBackground(reservaToSave, emailConfirmation) 
   });
 }
 
+function runSupportNotificationInBackground(reservaToSave) {
+  setImmediate(async () => {
+    try {
+      const supportNotification = await sendSupportReservationNotificationEmail(reservaToSave);
+      if (!supportNotification.sent) {
+        console.error(
+          'Falha na notificacao de suporte (background):',
+          supportNotification.error || supportNotification.reason || 'UNKNOWN_SUPPORT_NOTIFICATION_ERROR'
+        );
+      }
+    } catch (error) {
+      console.error('Falha na notificacao de suporte (background):', error.message);
+    }
+  });
+}
+
 function buildReservationEmailHtml(reserva) {
   const formattedDate = formatDateBr(reserva.data);
   const label = periodLabel(reserva.periodo);
@@ -1592,10 +1608,7 @@ async function requestHandler(req, res) {
         }
 
         const reservaToSave = await createReserva(reserva);
-        const [emailConfirmation, supportNotification] = await Promise.all([
-          sendReservaConfirmationEmail(reservaToSave),
-          sendSupportReservationNotificationEmail(reservaToSave)
-        ]);
+        const emailConfirmation = await sendReservaConfirmationEmail(reservaToSave);
 
         if (!emailConfirmation.sent) {
           try {
@@ -1614,24 +1627,16 @@ async function requestHandler(req, res) {
           return;
         }
 
-        if (!supportNotification.sent) {
-          try {
-            await deleteReservaById(reservaToSave.id);
-          } catch (rollbackError) {
-            console.error('Falha ao desfazer reserva apos erro de notificacao de suporte:', rollbackError.message);
-          }
-
-          sendError(
-            res,
-            502,
-            'SUPPORT_NOTIFICATION_FAILED',
-            'Nao foi possivel enviar a notificacao de nova reserva para o suporte. A reserva nao foi concluida.',
-            [supportNotification.error || supportNotification.reason || 'UNKNOWN_SUPPORT_NOTIFICATION_ERROR']
-          );
-          return;
-        }
-
-        sendJson(res, { reserva: reservaToSave, emailConfirmation, supportNotification }, 201);
+        sendJson(
+          res,
+          {
+            reserva: reservaToSave,
+            emailConfirmation,
+            supportNotification: { sent: false, pending: true, reason: 'BACKGROUND_DELIVERY' }
+          },
+          201
+        );
+        runSupportNotificationInBackground(reservaToSave);
         runPostReservaAutomationInBackground(reservaToSave, emailConfirmation);
       } catch (error) {
         if (error.message === 'PAYLOAD_TOO_LARGE') {
