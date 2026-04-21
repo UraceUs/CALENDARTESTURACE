@@ -25,6 +25,11 @@ const SMTP_PORT = Number.parseInt(process.env.SMTP_PORT || '587', 10);
 const SMTP_SECURE =
   String(process.env.SMTP_SECURE || 'false').toLowerCase() === 'true' || SMTP_PORT === 465;
 const SMTP_FAMILY = Number.parseInt(process.env.SMTP_FAMILY || '4', 10);
+const SMTP_FALLBACK_ENABLED =
+  String(process.env.SMTP_FALLBACK_ENABLED || 'true').toLowerCase() !== 'false';
+const SMTP_FALLBACK_PORT = Number.parseInt(process.env.SMTP_FALLBACK_PORT || '465', 10);
+const SMTP_FALLBACK_SECURE =
+  String(process.env.SMTP_FALLBACK_SECURE || 'true').toLowerCase() === 'true' || SMTP_FALLBACK_PORT === 465;
 const SMTP_USER = (process.env.SMTP_USER || '').trim();
 const SMTP_PASS = process.env.SMTP_PASS || '';
 const SMTP_FROM = (process.env.SMTP_FROM || SMTP_USER || 'no-reply@calendar.local').trim();
@@ -65,6 +70,8 @@ const firestoreState = {
 
 let emailTransporter = null;
 let emailTransporterInitPromise = null;
+let emailFallbackTransporter = null;
+let emailFallbackTransporterInitPromise = null;
 
 function initFirestore() {
   try {
@@ -275,6 +282,30 @@ async function resolveSmtpConnectionOptions() {
   }
 }
 
+function buildEmailTransportConfig(smtpConnection, port, secure) {
+  const transportConfig = {
+    host: smtpConnection.host,
+    port,
+    secure,
+    family: Number.isInteger(SMTP_FAMILY) && SMTP_FAMILY > 0 ? SMTP_FAMILY : 4,
+    connectionTimeout: 20000,
+    greetingTimeout: 20000,
+    socketTimeout: 30000,
+    auth: {
+      user: SMTP_USER,
+      pass: SMTP_PASS
+    }
+  };
+
+  if (smtpConnection.tlsServername) {
+    transportConfig.tls = {
+      servername: smtpConnection.tlsServername
+    };
+  }
+
+  return transportConfig;
+}
+
 async function getEmailTransporter() {
   if (!isEmailConfigured()) {
     return null;
@@ -295,25 +326,7 @@ async function getEmailTransporter() {
       console.log(`SMTP resolvido para IPv4 ${smtpConnection.resolvedAddress}.`);
     }
 
-    const transportConfig = {
-      host: smtpConnection.host,
-      port: SMTP_PORT,
-      secure: SMTP_SECURE,
-      family: Number.isInteger(SMTP_FAMILY) && SMTP_FAMILY > 0 ? SMTP_FAMILY : 4,
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 15000,
-      auth: {
-        user: SMTP_USER,
-        pass: SMTP_PASS
-      }
-    };
-
-    if (smtpConnection.tlsServername) {
-      transportConfig.tls = {
-        servername: smtpConnection.tlsServername
-      };
-    }
+    const transportConfig = buildEmailTransportConfig(smtpConnection, SMTP_PORT, SMTP_SECURE);
 
     emailTransporter = nodemailer.createTransport(transportConfig);
     return emailTransporter;
@@ -323,6 +336,103 @@ async function getEmailTransporter() {
     return await emailTransporterInitPromise;
   } finally {
     emailTransporterInitPromise = null;
+  }
+}
+
+function shouldRetryWithSmtpFallback(error) {
+  if (!SMTP_FALLBACK_ENABLED) {
+    return false;
+  }
+
+  if (!Number.isInteger(SMTP_FALLBACK_PORT) || SMTP_FALLBACK_PORT <= 0) {
+    return false;
+  }
+
+  if (SMTP_FALLBACK_PORT === SMTP_PORT && SMTP_FALLBACK_SECURE === SMTP_SECURE) {
+    return false;
+  }
+
+  const code = normalizeText(error && error.code).toUpperCase();
+  const message = normalizeText(error && error.message).toLowerCase();
+  return (
+    code === 'ETIMEDOUT' ||
+    code === 'ESOCKET' ||
+    code === 'ENETUNREACH' ||
+    code === 'EHOSTUNREACH' ||
+    message.includes('timeout') ||
+    message.includes('timed out') ||
+    message.includes('enetunreach')
+  );
+}
+
+async function getFallbackEmailTransporter() {
+  if (!isEmailConfigured() || !SMTP_FALLBACK_ENABLED) {
+    return null;
+  }
+
+  if (emailFallbackTransporter) {
+    return emailFallbackTransporter;
+  }
+
+  if (emailFallbackTransporterInitPromise) {
+    return emailFallbackTransporterInitPromise;
+  }
+
+  emailFallbackTransporterInitPromise = (async () => {
+    const smtpConnection = await resolveSmtpConnectionOptions();
+    const fallbackConfig = buildEmailTransportConfig(
+      smtpConnection,
+      SMTP_FALLBACK_PORT,
+      SMTP_FALLBACK_SECURE
+    );
+
+    emailFallbackTransporter = nodemailer.createTransport(fallbackConfig);
+    return emailFallbackTransporter;
+  })();
+
+  try {
+    return await emailFallbackTransporterInitPromise;
+  } finally {
+    emailFallbackTransporterInitPromise = null;
+  }
+}
+
+async function sendMailWithSmtpFallback(message) {
+  const transporter = await getEmailTransporter();
+  if (!transporter) {
+    throw new Error('EMAIL_NOT_CONFIGURED');
+  }
+
+  try {
+    const info = await transporter.sendMail(message);
+    return {
+      info,
+      fallbackUsed: false
+    };
+  } catch (primaryError) {
+    if (!shouldRetryWithSmtpFallback(primaryError)) {
+      throw primaryError;
+    }
+
+    const fallbackTransporter = await getFallbackEmailTransporter();
+    if (!fallbackTransporter) {
+      throw primaryError;
+    }
+
+    console.warn(
+      `Falha no SMTP primario (${SMTP_HOST}:${SMTP_PORT}). Tentando fallback ${SMTP_HOST}:${SMTP_FALLBACK_PORT}.`
+    );
+
+    try {
+      const info = await fallbackTransporter.sendMail(message);
+      return {
+        info,
+        fallbackUsed: true
+      };
+    } catch (fallbackError) {
+      const fallbackMessage = normalizeText(fallbackError.message) || 'Falha desconhecida no fallback SMTP';
+      throw new Error(`${primaryError.message} | fallback ${SMTP_FALLBACK_PORT}: ${fallbackMessage}`);
+    }
   }
 }
 
@@ -825,8 +935,7 @@ async function sendReservaConfirmationEmail(reserva) {
     return { sent: false, reason: 'EMAIL_MISSING' };
   }
 
-  const transporter = await getEmailTransporter();
-  if (!transporter) {
+  if (!isEmailConfigured()) {
     const missingFields = getMissingEmailConfigFields();
     console.warn(`Envio de e-mail desativado: configure ${missingFields.join(', ')}.`);
     return { sent: false, reason: 'EMAIL_NOT_CONFIGURED' };
@@ -870,10 +979,12 @@ async function sendReservaConfirmationEmail(reserva) {
   }
 
   try {
-    const info = await transporter.sendMail(message);
+    const result = await sendMailWithSmtpFallback(message);
+    const info = result.info;
     return {
       sent: true,
-      messageId: info && info.messageId ? info.messageId : null
+      messageId: info && info.messageId ? info.messageId : null,
+      fallbackUsed: Boolean(result.fallbackUsed)
     };
   } catch (error) {
     console.error('Falha ao enviar e-mail de confirmacao:', error.message);
@@ -890,8 +1001,7 @@ async function sendSupportReservationNotificationEmail(reserva) {
     return { sent: false, reason: 'RESERVA_MISSING' };
   }
 
-  const transporter = await getEmailTransporter();
-  if (!transporter) {
+  if (!isEmailConfigured()) {
     return { sent: false, reason: 'EMAIL_NOT_CONFIGURED' };
   }
 
@@ -930,10 +1040,12 @@ async function sendSupportReservationNotificationEmail(reserva) {
   }
 
   try {
-    const info = await transporter.sendMail(message);
+    const result = await sendMailWithSmtpFallback(message);
+    const info = result.info;
     return {
       sent: true,
-      messageId: info && info.messageId ? info.messageId : null
+      messageId: info && info.messageId ? info.messageId : null,
+      fallbackUsed: Boolean(result.fallbackUsed)
     };
   } catch (error) {
     console.error('Falha ao enviar notificacao de nova reserva para suporte:', error.message);
