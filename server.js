@@ -1,9 +1,16 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const dns = require('dns');
 const { URL } = require('url');
 const admin = require('firebase-admin');
 const nodemailer = require('nodemailer');
+
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch (error) {
+  console.warn('Nao foi possivel definir prioridade IPv4 no DNS:', error.message);
+}
 
 const PORT = process.env.PORT || 3000;
 const publicFile = path.join(__dirname, 'public', 'Calendar.html');
