@@ -30,6 +30,11 @@ const SMTP_FALLBACK_ENABLED =
 const SMTP_FALLBACK_PORT = Number.parseInt(process.env.SMTP_FALLBACK_PORT || '465', 10);
 const SMTP_FALLBACK_SECURE =
   String(process.env.SMTP_FALLBACK_SECURE || 'true').toLowerCase() === 'true' || SMTP_FALLBACK_PORT === 465;
+const EMAIL_CONFIRMATION_MAX_ATTEMPTS = Number.parseInt(process.env.EMAIL_CONFIRMATION_MAX_ATTEMPTS || '8', 10);
+const EMAIL_CONFIRMATION_RETRY_BASE_MS = Number.parseInt(process.env.EMAIL_CONFIRMATION_RETRY_BASE_MS || '30000', 10);
+const EMAIL_CONFIRMATION_RETRY_MAX_MS = Number.parseInt(process.env.EMAIL_CONFIRMATION_RETRY_MAX_MS || '900000', 10);
+const RESEND_API_KEY = (process.env.RESEND_API_KEY || '').trim();
+const RESEND_FROM = (process.env.RESEND_FROM || process.env.SMTP_FROM || '').trim();
 const SMTP_USER = (process.env.SMTP_USER || '').trim();
 const SMTP_PASS = process.env.SMTP_PASS || '';
 const SMTP_FROM = (process.env.SMTP_FROM || SMTP_USER || 'no-reply@calendar.local').trim();
@@ -72,6 +77,8 @@ let emailTransporter = null;
 let emailTransporterInitPromise = null;
 let emailFallbackTransporter = null;
 let emailFallbackTransporterInitPromise = null;
+const emailConfirmationRetryTimers = new Map();
+let emailConfirmationRetrySweepRunning = false;
 
 function initFirestore() {
   try {
@@ -220,6 +227,14 @@ function isEmailConfigured() {
     Boolean(SMTP_PASS) &&
     Boolean(SMTP_FROM)
   );
+}
+
+function isResendConfigured() {
+  return Boolean(RESEND_API_KEY) && Boolean(RESEND_FROM);
+}
+
+function isAnyEmailProviderConfigured() {
+  return isEmailConfigured() || isResendConfigured();
 }
 
 function getMissingEmailConfigFields() {
@@ -434,6 +449,104 @@ async function sendMailWithSmtpFallback(message) {
       throw new Error(`${primaryError.message} | fallback ${SMTP_FALLBACK_PORT}: ${fallbackMessage}`);
     }
   }
+}
+
+function normalizeRecipientList(value) {
+  if (!value) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map(item => normalizeText(String(item)).toLowerCase())
+      .filter(Boolean);
+  }
+
+  return String(value)
+    .split(',')
+    .map(item => normalizeText(item).toLowerCase())
+    .filter(Boolean);
+}
+
+async function sendMailWithResend(message) {
+  if (typeof fetch !== 'function') {
+    throw new Error('FETCH_NOT_AVAILABLE');
+  }
+
+  if (!isResendConfigured()) {
+    throw new Error('RESEND_NOT_CONFIGURED');
+  }
+
+  const recipients = normalizeRecipientList(message && message.to);
+  if (!recipients.length) {
+    throw new Error('RESEND_RECIPIENT_MISSING');
+  }
+
+  const payload = {
+    from: RESEND_FROM,
+    to: recipients,
+    subject: normalizeText(message && message.subject),
+    html: normalizeText(message && message.html),
+    text: normalizeText(message && message.text)
+  };
+
+  if (message && message.replyTo) {
+    payload.reply_to = normalizeText(message.replyTo);
+  }
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${RESEND_API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const detail = body && body.message ? body.message : JSON.stringify(body);
+    throw new Error(`RESEND_HTTP_${response.status}: ${detail}`);
+  }
+
+  return {
+    messageId: body && body.id ? body.id : null
+  };
+}
+
+async function sendMailWithProviderFallback(message) {
+  const smtpAvailable = isEmailConfigured();
+  const resendAvailable = isResendConfigured();
+  let smtpError = null;
+
+  if (smtpAvailable) {
+    try {
+      const smtp = await sendMailWithSmtpFallback(message);
+      return {
+        info: smtp.info,
+        fallbackUsed: Boolean(smtp.fallbackUsed),
+        provider: smtp.fallbackUsed ? 'smtp-fallback' : 'smtp'
+      };
+    } catch (error) {
+      smtpError = error;
+      console.error('Falha no envio SMTP:', error.message);
+    }
+  }
+
+  if (resendAvailable) {
+    const resendInfo = await sendMailWithResend(message);
+    return {
+      info: resendInfo,
+      fallbackUsed: true,
+      provider: 'resend'
+    };
+  }
+
+  if (smtpError) {
+    throw smtpError;
+  }
+
+  throw new Error('EMAIL_NOT_CONFIGURED');
 }
 
 function formatDateBr(dateString) {
@@ -995,9 +1108,9 @@ async function sendReservaConfirmationEmail(reserva) {
     return { sent: false, reason: 'EMAIL_MISSING' };
   }
 
-  if (!isEmailConfigured()) {
+  if (!isAnyEmailProviderConfigured()) {
     const missingFields = getMissingEmailConfigFields();
-    console.warn(`Envio de e-mail desativado: configure ${missingFields.join(', ')}.`);
+    console.warn(`Envio de e-mail desativado: configure SMTP (${missingFields.join(', ')}) ou RESEND_API_KEY/RESEND_FROM.`);
     return { sent: false, reason: 'EMAIL_NOT_CONFIGURED' };
   }
 
@@ -1039,12 +1152,13 @@ async function sendReservaConfirmationEmail(reserva) {
   }
 
   try {
-    const result = await sendMailWithSmtpFallback(message);
+    const result = await sendMailWithProviderFallback(message);
     const info = result.info;
     return {
       sent: true,
       messageId: info && info.messageId ? info.messageId : null,
-      fallbackUsed: Boolean(result.fallbackUsed)
+      fallbackUsed: Boolean(result.fallbackUsed),
+      provider: result.provider || null
     };
   } catch (error) {
     console.error('Falha ao enviar e-mail de confirmacao:', error.message);
@@ -1061,7 +1175,7 @@ async function sendSupportReservationNotificationEmail(reserva) {
     return { sent: false, reason: 'RESERVA_MISSING' };
   }
 
-  if (!isEmailConfigured()) {
+  if (!isAnyEmailProviderConfigured()) {
     return { sent: false, reason: 'EMAIL_NOT_CONFIGURED' };
   }
 
@@ -1100,12 +1214,13 @@ async function sendSupportReservationNotificationEmail(reserva) {
   }
 
   try {
-    const result = await sendMailWithSmtpFallback(message);
+    const result = await sendMailWithProviderFallback(message);
     const info = result.info;
     return {
       sent: true,
       messageId: info && info.messageId ? info.messageId : null,
-      fallbackUsed: Boolean(result.fallbackUsed)
+      fallbackUsed: Boolean(result.fallbackUsed),
+      provider: result.provider || null
     };
   } catch (error) {
     console.error('Falha ao enviar notificacao de nova reserva para suporte:', error.message);
@@ -1623,7 +1738,7 @@ async function requestHandler(req, res) {
         }
 
         const reservaToSave = await createReserva(reserva);
-        const emailConfirmation = isEmailConfigured()
+        const emailConfirmation = isAnyEmailProviderConfigured()
           ? { sent: false, pending: true, reason: 'BACKGROUND_DELIVERY' }
           : { sent: false, pending: false, reason: 'EMAIL_NOT_CONFIGURED' };
 
