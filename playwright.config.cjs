@@ -1,5 +1,7 @@
 const { defineConfig } = require('@playwright/test');
 
+const e2eBaseUrl = process.env.E2E_BASE_URL || 'https://calendar-backend-production-a5ad.up.railway.app';
+
 module.exports = defineConfig({
   testDir: './tests/e2e',
   timeout: 45000,
@@ -7,13 +9,7 @@ module.exports = defineConfig({
   workers: 1,
   reporter: 'list',
   use: {
-    baseURL: 'http://127.0.0.1:3100',
+    baseURL: e2eBaseUrl,
     headless: true
-  },
-  webServer: {
-    command: 'node tests/e2e/mock-server.js',
-    url: 'http://127.0.0.1:3100',
-    reuseExistingServer: true,
-    timeout: 120000
   }
 });

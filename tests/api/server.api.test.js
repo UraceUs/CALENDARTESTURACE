@@ -156,7 +156,7 @@ describe('API routes', () => {
     expect(response.body).toHaveLength(0);
   });
 
-  it('POST /api/reservas returns 503 when SMTP is not configured', async () => {
+  it('POST /api/reservas saves reservation and marks email as pending when SMTP is not configured', async () => {
     const payload = {
       nomePiloto: 'Teste Piloto',
       responsavelPiloto: 'Teste Responsavel',
@@ -177,12 +177,30 @@ describe('API routes', () => {
       .set('Content-Type', 'application/json')
       .send(payload);
 
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(201);
     expect(response.body).toMatchObject({
-      error: {
-        code: 'EMAIL_SERVICE_NOT_CONFIGURED'
+      reserva: {
+        nomePiloto: payload.nomePiloto,
+        responsavelPiloto: payload.responsavelPiloto,
+        servico: payload.servico,
+        data: payload.data,
+        periodo: payload.periodo,
+        email: payload.email
+      },
+      emailConfirmation: {
+        sent: false,
+        pending: false,
+        reason: 'EMAIL_NOT_CONFIGURED'
+      },
+      supportNotification: {
+        sent: false,
+        pending: true,
+        reason: 'BACKGROUND_DELIVERY'
       }
     });
+
+    expect(dbState.reservas).toHaveLength(1);
+    expect(dbState.reservas[0].nomePiloto).toBe(payload.nomePiloto);
   });
 
   it('POST /api/disponibilidade blocks and unblocks a period', async () => {

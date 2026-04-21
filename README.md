@@ -168,19 +168,19 @@ Campos opcionais aceitos no `POST /api/reservas` para preencher a descrição do
 - `waist`
 - `kartingExperience`
 
-## Como rodar
+## Como usar (Railway + Firestore)
 
-1. Instalar dependências:
+1. Instale dependencias:
   - `npm.cmd install`
-2. Subir o servidor:
-  - `node server.js`
-3. Abrir no navegador:
-  - Cliente: `http://localhost:3000/`
-  - Admin: `http://localhost:3000/admin/`
+2. Configure no Railway as variaveis obrigatorias (`FIREBASE_SERVICE_ACCOUNT_JSON`, SMTP/Resend e integracoes opcionais).
+3. Publique o backend no Railway e use a URL publica do servico.
+4. Acesse o frontend com a API publicada:
+  - Cliente: `https://SEU_USUARIO.github.io/SEU_REPO/Calendar.html?apiBase=https://seu-backend.up.railway.app`
+  - Admin: `https://SEU_USUARIO.github.io/SEU_REPO/Admin.html?apiBase=https://seu-backend.up.railway.app`
 
 ## Publicacao no GitHub Pages
 
-Quando o frontend roda no GitHub Pages (`*.github.io`), ele nao consegue acessar automaticamente `localhost:3000` do seu computador.
+Quando o frontend roda no GitHub Pages (`*.github.io`), ele deve usar uma API publicada (Railway).
 
 Nessa situacao, conecte um backend publicado via `apiBase`.
 

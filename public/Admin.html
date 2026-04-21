@@ -570,11 +570,12 @@
       manha: 'Manhã',
       tarde: 'Tarde',
       all: 'Dia todo'
+    };
+
     const CANONICAL_API_BASES = [
       'https://calendar-backend-production-a5ad.up.railway.app',
       'https://calendar-backend-production-e7ba.up.railway.app'
     ];
-    };
 
     const state = {
       reservas: [],
@@ -634,7 +635,8 @@
       try {
         const parsed = new URL(trimmed);
         const hostname = (parsed.hostname || '').toLowerCase();
-        if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1';
+        if (isLocalHost) {
           return '';
         }
       } catch (error) {
@@ -674,7 +676,6 @@
     }
 
     function getApiCandidates() {
-      const origin = window.location.origin;
       const candidates = [];
 
       CANONICAL_API_BASES.forEach(base => {
@@ -687,10 +688,6 @@
       const configuredApiBase = getConfiguredApiBase();
       if (configuredApiBase) {
         candidates.push(configuredApiBase);
-      }
-
-      if (!isGithubPagesHost()) {
-        candidates.push(origin);
       }
 
       return [...new Set(candidates)];
@@ -717,7 +714,7 @@
     async function canReachApi(base) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const timeoutId = setTimeout(() => controller.abort(), 7000);
         const response = await fetch(`${base}/api/reservas`, {
           method: 'GET',
           signal: controller.signal
@@ -737,6 +734,12 @@
           state.apiBase = base;
           return true;
         }
+      }
+
+      // Em redes lentas, evita painel em branco: tenta o primeiro candidato disponivel.
+      if (candidates.length > 0) {
+        state.apiBase = candidates[0];
+        return true;
       }
 
       state.apiBase = '';

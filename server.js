@@ -30,9 +30,6 @@ const SMTP_FALLBACK_ENABLED =
 const SMTP_FALLBACK_PORT = Number.parseInt(process.env.SMTP_FALLBACK_PORT || '465', 10);
 const SMTP_FALLBACK_SECURE =
   String(process.env.SMTP_FALLBACK_SECURE || 'true').toLowerCase() === 'true' || SMTP_FALLBACK_PORT === 465;
-const EMAIL_CONFIRMATION_MAX_ATTEMPTS = Number.parseInt(process.env.EMAIL_CONFIRMATION_MAX_ATTEMPTS || '8', 10);
-const EMAIL_CONFIRMATION_RETRY_BASE_MS = Number.parseInt(process.env.EMAIL_CONFIRMATION_RETRY_BASE_MS || '30000', 10);
-const EMAIL_CONFIRMATION_RETRY_MAX_MS = Number.parseInt(process.env.EMAIL_CONFIRMATION_RETRY_MAX_MS || '900000', 10);
 const RESEND_API_KEY = (process.env.RESEND_API_KEY || '').trim();
 const RESEND_FROM = (process.env.RESEND_FROM || process.env.SMTP_FROM || '').trim();
 const SMTP_USER = (process.env.SMTP_USER || '').trim();
@@ -77,8 +74,6 @@ let emailTransporter = null;
 let emailTransporterInitPromise = null;
 let emailFallbackTransporter = null;
 let emailFallbackTransporterInitPromise = null;
-const emailConfirmationRetryTimers = new Map();
-let emailConfirmationRetrySweepRunning = false;
 
 function initFirestore() {
   try {
@@ -1032,46 +1027,87 @@ function runPostReservaAutomationInBackground(reservaToSave, emailConfirmation) 
   });
 }
 
-function runSupportNotificationInBackground(reservaToSave) {
-  setImmediate(async () => {
-    try {
-      const supportNotification = await sendSupportReservationNotificationEmail(reservaToSave);
-      if (!supportNotification.sent) {
-        console.error(
-          'Falha na notificacao de suporte (background):',
-          supportNotification.error || supportNotification.reason || 'UNKNOWN_SUPPORT_NOTIFICATION_ERROR'
-        );
-      }
-    } catch (error) {
-      console.error('Falha na notificacao de suporte (background):', error.message);
-    }
-  });
+function shouldRetryBackgroundEmail(result) {
+  if (!result || result.sent) {
+    return false;
+  }
+
+  const nonRetryableReasons = new Set([
+    'EMAIL_NOT_CONFIGURED',
+    'SUPPORT_EMAIL_MISSING',
+    'EMAIL_MISSING',
+    'RESERVA_MISSING'
+  ]);
+
+  return !nonRetryableReasons.has(result.reason || '');
 }
 
-function runConfirmationEmailInBackground(reservaToSave) {
-  setImmediate(async () => {
+function runEmailDeliveryWithRetryInBackground(label, reservaToSave, sendFn) {
+  const retryDelaysMs = [0, 10000, 45000];
+
+  const executeAttempt = async (attemptIndex) => {
     try {
-      const emailConfirmation = await sendReservaConfirmationEmail(reservaToSave);
-      if (!emailConfirmation.sent) {
-        console.error(
-          'Falha no envio de confirmacao (background):',
-          emailConfirmation.error || emailConfirmation.reason || 'UNKNOWN_EMAIL_ERROR'
+      const result = await sendFn(reservaToSave);
+      if (result && result.sent) {
+        console.log(
+          `${label} enviado em background:`,
+          JSON.stringify({
+            reservaId: reservaToSave && reservaToSave.id ? reservaToSave.id : null,
+            messageId: result.messageId || null,
+            provider: result.provider || null,
+            fallbackUsed: Boolean(result.fallbackUsed),
+            attempt: attemptIndex + 1
+          })
         );
         return;
       }
 
-      console.log(
-        'Confirmacao de reserva enviada em background:',
-        JSON.stringify({
-          reservaId: reservaToSave && reservaToSave.id ? reservaToSave.id : null,
-          messageId: emailConfirmation.messageId || null,
-          fallbackUsed: Boolean(emailConfirmation.fallbackUsed)
-        })
-      );
+      const reason = (result && (result.error || result.reason)) || 'UNKNOWN_EMAIL_ERROR';
+      console.error(`${label} falhou em background (tentativa ${attemptIndex + 1}):`, reason);
+
+      const hasNextAttempt = attemptIndex + 1 < retryDelaysMs.length;
+      if (hasNextAttempt && shouldRetryBackgroundEmail(result)) {
+        setTimeout(() => {
+          executeAttempt(attemptIndex + 1).catch(error => {
+            console.error(`${label} erro inesperado na retentativa:`, error.message);
+          });
+        }, retryDelaysMs[attemptIndex + 1]);
+      }
     } catch (error) {
-      console.error('Falha no envio de confirmacao (background):', error.message);
+      console.error(`${label} falha inesperada em background (tentativa ${attemptIndex + 1}):`, error.message);
+
+      const hasNextAttempt = attemptIndex + 1 < retryDelaysMs.length;
+      if (hasNextAttempt) {
+        setTimeout(() => {
+          executeAttempt(attemptIndex + 1).catch(innerError => {
+            console.error(`${label} erro inesperado na retentativa:`, innerError.message);
+          });
+        }, retryDelaysMs[attemptIndex + 1]);
+      }
     }
+  };
+
+  setImmediate(() => {
+    executeAttempt(0).catch(error => {
+      console.error(`${label} erro inesperado ao iniciar envio em background:`, error.message);
+    });
   });
+}
+
+function runSupportNotificationInBackground(reservaToSave) {
+  runEmailDeliveryWithRetryInBackground(
+    'Notificacao de suporte',
+    reservaToSave,
+    sendSupportReservationNotificationEmail
+  );
+}
+
+function runConfirmationEmailInBackground(reservaToSave) {
+  runEmailDeliveryWithRetryInBackground(
+    'Confirmacao de reserva',
+    reservaToSave,
+    sendReservaConfirmationEmail
+  );
 }
 
 function buildReservationEmailHtml(reserva) {
@@ -2097,7 +2133,7 @@ function createServer() {
 if (require.main === module) {
   const server = createServer();
   server.listen(PORT, () => {
-    console.log(`Servidor rodando em http://localhost:${PORT}`);
+    console.log(`Servidor rodando na porta ${PORT}`);
   });
 }
 

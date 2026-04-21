@@ -1,15 +1,24 @@
 const { test, expect } = require('@playwright/test');
 
-const apiBase = 'http://127.0.0.1:3100';
+const apiBase = process.env.E2E_API_BASE || process.env.E2E_BASE_URL || 'https://calendar-backend-production-a5ad.up.railway.app';
 
 test.describe.configure({ mode: 'serial' });
 
 test('cliente envia reserva com sucesso', async ({ page }) => {
   await page.goto(`/Calendar.html?apiBase=${encodeURIComponent(apiBase)}`);
+  await expect(page.locator('#formFeedback')).not.toContainText('Conectando ao servidor...');
 
   await page.locator('.service-card[data-service="Professional Coaching"]').click();
-  await page.locator('#daysGrid button').first().click();
-  await page.locator('.period-card[data-period="manha"]').click();
+  await expect(page.locator('#servico')).toHaveValue('Professional Coaching');
+
+  await page.locator('#daysGrid button:not([disabled])').first().click();
+
+  const manhaCard = page.locator('.period-card[data-period="manha"]');
+  if (await manhaCard.isDisabled()) {
+    await page.locator('.period-card[data-period="tarde"]:not([disabled])').click();
+  } else {
+    await manhaCard.click();
+  }
 
   await page.fill('#nomePiloto', 'Teste Playwright');
   await page.fill('#responsavelPiloto', 'Responsavel Playwright');
@@ -25,11 +34,12 @@ test('cliente envia reserva com sucesso', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Enviar reserva' }).click();
 
-  await expect(page.locator('#formFeedback')).toContainText('Confirmacao enviada');
+  await expect(page.locator('#formFeedback')).toContainText('Reserva registrada com sucesso');
 });
 
 test('admin visualiza reserva criada', async ({ page }) => {
   await page.goto(`/Admin.html?apiBase=${encodeURIComponent(apiBase)}`);
+  await expect(page.locator('#reservationsFeedback')).not.toContainText('Conectando ao servidor...');
 
   await expect(page.locator('#reservationTableBody')).toContainText('Teste Playwright');
   await expect(page.locator('#reservationTableBody')).toContainText('Responsavel Playwright');
