@@ -1830,13 +1830,22 @@ function validateReserva(payload) {
 }
 
 function validateDisponibilidade(payload) {
-  const date = normalizeText(payload.data);
+  const date = normalizeText(payload.data || payload.dataInicial);
+  const endDate = normalizeText(payload.dataFinal || payload.data || payload.dataInicial);
   const period = normalizeText(payload.periodo);
   const blocked = payload.bloqueado;
   const errors = [];
 
   if (!isValidDateString(date)) {
     errors.push('Campo data deve estar no formato YYYY-MM-DD e ser valido.');
+  }
+
+  if (!isValidDateString(endDate)) {
+    errors.push('Campo dataFinal deve estar no formato YYYY-MM-DD e ser valido.');
+  }
+
+  if (isValidDateString(date) && isValidDateString(endDate) && endDate < date) {
+    errors.push('Campo dataFinal deve ser maior ou igual a data inicial.');
   }
 
   if (!(ALLOWED_PERIODS.has(period) || period === 'all')) {
@@ -1851,6 +1860,7 @@ function validateDisponibilidade(payload) {
     errors,
     bloqueio: {
       data: date,
+      dataFinal: endDate,
       periodo: period,
       bloqueado: blocked
     }
@@ -1858,13 +1868,22 @@ function validateDisponibilidade(payload) {
 }
 
 function validateCapacidade(payload) {
-  const date = normalizeText(payload.data);
+  const date = normalizeText(payload.data || payload.dataInicial);
+  const endDate = normalizeText(payload.dataFinal || payload.data || payload.dataInicial);
   const period = normalizeText(payload.periodo);
   const quantity = normalizeInteger(payload.quantidade);
   const errors = [];
 
   if (!isValidDateString(date)) {
     errors.push('Campo data deve estar no formato YYYY-MM-DD e ser valido.');
+  }
+
+  if (!isValidDateString(endDate)) {
+    errors.push('Campo dataFinal deve estar no formato YYYY-MM-DD e ser valido.');
+  }
+
+  if (isValidDateString(date) && isValidDateString(endDate) && endDate < date) {
+    errors.push('Campo dataFinal deve ser maior ou igual a data inicial.');
   }
 
   if (!ALLOWED_PERIODS.has(period)) {
@@ -1879,10 +1898,24 @@ function validateCapacidade(payload) {
     errors,
     capacidade: {
       data: date,
+      dataFinal: endDate,
       periodo: period,
       quantidade: quantity
     }
   };
+}
+
+function listDatesInRange(startDate, endDate) {
+  const dates = [];
+  const current = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
+
+  while (current <= end) {
+    dates.push(current.toISOString().slice(0, 10));
+    current.setUTCDate(current.getUTCDate() + 1);
+  }
+
+  return dates;
 }
 
 function getCapacityForPeriod(capacidades, data, periodo) {
@@ -2273,7 +2306,15 @@ async function requestHandler(req, res) {
           return;
         }
 
-        const updated = await setDisponibilidade(bloqueio);
+        const dates = listDatesInRange(bloqueio.data, bloqueio.dataFinal);
+        for (const date of dates) {
+          await setDisponibilidade({
+            data: date,
+            periodo: bloqueio.periodo,
+            bloqueado: bloqueio.bloqueado
+          });
+        }
+        const updated = await readDisponibilidade();
 
         sendJson(res, { disponibilidade: updated }, 200);
       } catch (error) {
@@ -2350,20 +2391,29 @@ async function requestHandler(req, res) {
         }
 
         const capacidades = await readCapacidades();
-        const atual = getCapacityForPeriod(capacidades, capacidade.data, capacidade.periodo);
-        const novaCapacidade = atual + capacidade.quantidade;
+        const dates = listDatesInRange(capacidade.data, capacidade.dataFinal);
+        let lastCapacity = null;
 
-        await setCapacidade(capacidade.data, capacidade.periodo, novaCapacidade);
+        for (const date of dates) {
+          const atual = getCapacityForPeriod(capacidades, date, capacidade.periodo);
+          const novaCapacidade = atual + capacidade.quantidade;
+          await setCapacidade(date, capacidade.periodo, novaCapacidade);
+
+          const existingIndex = capacidades.findIndex(item => item && item.data === date && item.periodo === capacidade.periodo);
+          const nextItem = { data: date, periodo: capacidade.periodo, vagas: novaCapacidade };
+          if (existingIndex === -1) {
+            capacidades.push(nextItem);
+          } else {
+            capacidades[existingIndex] = nextItem;
+          }
+          lastCapacity = nextItem;
+        }
         const updated = await readCapacidades();
 
         sendJson(
           res,
           {
-            capacidade: {
-              data: capacidade.data,
-              periodo: capacidade.periodo,
-              vagas: novaCapacidade
-            },
+            capacidade: lastCapacity,
             capacidades: updated
           },
           200

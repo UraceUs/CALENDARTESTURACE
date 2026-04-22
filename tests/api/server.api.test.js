@@ -221,6 +221,22 @@ describe('API routes', () => {
     expect(unblockResponse.body.disponibilidade).toEqual([]);
   });
 
+  it('POST /api/disponibilidade applies blocking across a date range', async () => {
+    const response = await request(app)
+      .post('/api/disponibilidade')
+      .set('Content-Type', 'application/json')
+      .send({ dataInicial: '2026-06-10', dataFinal: '2026-06-12', periodo: 'manha', bloqueado: true });
+
+    expect(response.status).toBe(200);
+    expect(response.body.disponibilidade).toEqual(
+      expect.arrayContaining([
+        { data: '2026-06-10', periodo: 'manha' },
+        { data: '2026-06-11', periodo: 'manha' },
+        { data: '2026-06-12', periodo: 'manha' }
+      ])
+    );
+  });
+
   it('POST /api/capacidade increments capacity for a period', async () => {
     const response = await request(app)
       .post('/api/capacidade')
@@ -238,6 +254,25 @@ describe('API routes', () => {
     expect(getResponse.status).toBe(200);
     expect(getResponse.body).toEqual(
       expect.arrayContaining([{ data: '2026-06-11', periodo: 'tarde', vagas: 7 }])
+    );
+  });
+
+  it('POST /api/capacidade applies extra capacity across a date range', async () => {
+    const response = await request(app)
+      .post('/api/capacidade')
+      .set('Content-Type', 'application/json')
+      .send({ dataInicial: '2026-06-11', dataFinal: '2026-06-13', periodo: 'tarde', quantidade: 2 });
+
+    expect(response.status).toBe(200);
+
+    const getResponse = await request(app).get('/api/capacidade');
+    expect(getResponse.status).toBe(200);
+    expect(getResponse.body).toEqual(
+      expect.arrayContaining([
+        { data: '2026-06-11', periodo: 'tarde', vagas: 6 },
+        { data: '2026-06-12', periodo: 'tarde', vagas: 6 },
+        { data: '2026-06-13', periodo: 'tarde', vagas: 6 }
+      ])
     );
   });
 

@@ -529,8 +529,12 @@
           <div class="ops-panel">
             <h3>Disponibilidade do Calendário</h3>
             <form id="availabilityForm">
-              <label>Data
-                <input type="date" id="availabilityDate" required />
+              <label>Data inicial
+                <input type="date" id="availabilityStartDate" required />
+              </label>
+
+              <label>Data final
+                <input type="date" id="availabilityEndDate" required />
               </label>
 
               <label>Período
@@ -554,10 +558,14 @@
 
           <div class="ops-panel">
             <h3>Ajuste de Vagas por Dia</h3>
-            <p class="small-note">Selecione data, período e quantas vagas extras deseja adicionar.</p>
+            <p class="small-note">Selecione um intervalo de datas, período e quantas vagas extras deseja adicionar.</p>
             <form id="capacityForm">
-              <label>Data
-                <input type="date" id="capacityDate" required />
+              <label>Data inicial
+                <input type="date" id="capacityStartDate" required />
+              </label>
+
+              <label>Data final
+                <input type="date" id="capacityEndDate" required />
               </label>
 
               <label>Período
@@ -638,13 +646,15 @@
     const adminDaysGrid = document.getElementById('adminDaysGrid');
     const selectedDayNote = document.getElementById('selectedDayNote');
 
-    const availabilityDate = document.getElementById('availabilityDate');
+    const availabilityStartDate = document.getElementById('availabilityStartDate');
+    const availabilityEndDate = document.getElementById('availabilityEndDate');
     const availabilityPeriod = document.getElementById('availabilityPeriod');
     const blockBtn = document.getElementById('blockBtn');
     const unblockBtn = document.getElementById('unblockBtn');
     const availabilityFeedback = document.getElementById('availabilityFeedback');
     const availabilityList = document.getElementById('availabilityList');
-    const capacityDate = document.getElementById('capacityDate');
+    const capacityStartDate = document.getElementById('capacityStartDate');
+    const capacityEndDate = document.getElementById('capacityEndDate');
     const capacityPeriod = document.getElementById('capacityPeriod');
     const capacityAmount = document.getElementById('capacityAmount');
     const addCapacityBtn = document.getElementById('addCapacityBtn');
@@ -1010,8 +1020,10 @@
 
         button.addEventListener('click', () => {
           state.selectedDay = date;
-          availabilityDate.value = date;
-          capacityDate.value = date;
+          availabilityStartDate.value = date;
+          availabilityEndDate.value = date;
+          capacityStartDate.value = date;
+          capacityEndDate.value = date;
           renderAdminCalendar();
           updateSelectedDayNote();
         });
@@ -1236,7 +1248,7 @@
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'list-item-action';
-        btn.textContent = 'Excluir ajuste';
+        btn.textContent = 'Remover';
         btn.addEventListener('click', async () => {
           try {
             btn.disabled = true;
@@ -1500,23 +1512,34 @@
     }
 
     async function setBlockState(bloqueado) {
-      const data = availabilityDate.value;
+      const dataInicial = normalizeDateInput(availabilityStartDate.value);
+      const dataFinal = normalizeDateInput(availabilityEndDate.value);
       const periodo = availabilityPeriod.value;
 
-      if (!data) {
-        setFeedback(availabilityFeedback, 'error', 'Selecione uma data para alterar disponibilidade.');
+      if (!dataInicial || !dataFinal) {
+        setFeedback(availabilityFeedback, 'error', 'Selecione data inicial e final para alterar disponibilidade.');
+        return;
+      }
+
+      if (dataFinal < dataInicial) {
+        setFeedback(availabilityFeedback, 'error', 'A data final deve ser maior ou igual a data inicial.');
         return;
       }
 
       try {
         setFeedback(availabilityFeedback, '', '');
-        state.disponibilidade = await saveDisponibilidade({ data, periodo, bloqueado });
+        state.disponibilidade = await saveDisponibilidade({
+          dataInicial,
+          dataFinal,
+          periodo,
+          bloqueado
+        });
         renderDisponibilidade();
         await refreshAll();
         setFeedback(
           availabilityFeedback,
           'success',
-          bloqueado ? 'Período bloqueado com sucesso.' : 'Período desbloqueado com sucesso.'
+          bloqueado ? 'Período bloqueado com sucesso no intervalo selecionado.' : 'Período desbloqueado com sucesso no intervalo selecionado.'
         );
       } catch (error) {
         setFeedback(availabilityFeedback, 'error', error.message || 'Erro ao atualizar disponibilidade.');
@@ -1524,12 +1547,18 @@
     }
 
     async function handleAddCapacity() {
-      const data = normalizeDateInput(capacityDate.value);
+      const dataInicial = normalizeDateInput(capacityStartDate.value);
+      const dataFinal = normalizeDateInput(capacityEndDate.value);
       const periodo = capacityPeriod.value;
       const quantidade = Number(capacityAmount.value);
 
-      if (!data) {
-        setFeedback(capacityFeedback, 'error', 'Selecione uma data para adicionar vagas.');
+      if (!dataInicial || !dataFinal) {
+        setFeedback(capacityFeedback, 'error', 'Selecione data inicial e final para adicionar vagas.');
+        return;
+      }
+
+      if (dataFinal < dataInicial) {
+        setFeedback(capacityFeedback, 'error', 'A data final deve ser maior ou igual a data inicial.');
         return;
       }
 
@@ -1541,14 +1570,17 @@
       try {
         setFeedback(capacityFeedback, '', '');
         addCapacityBtn.disabled = true;
-        if (data !== capacityDate.value) {
-          capacityDate.value = data;
+        if (dataInicial !== capacityStartDate.value) {
+          capacityStartDate.value = dataInicial;
         }
-        state.capacidade = await addCapacity({ data, periodo, quantidade });
+        if (dataFinal !== capacityEndDate.value) {
+          capacityEndDate.value = dataFinal;
+        }
+        state.capacidade = await addCapacity({ dataInicial, dataFinal, periodo, quantidade });
         renderCapacidade();
         renderAdminCalendar();
         updateSelectedDayNote();
-        setFeedback(capacityFeedback, 'success', 'Vagas adicionadas com sucesso.');
+        setFeedback(capacityFeedback, 'success', 'Vagas adicionadas com sucesso no intervalo selecionado.');
       } catch (error) {
         setFeedback(capacityFeedback, 'error', error.message || 'Falha ao adicionar vagas.');
       } finally {
