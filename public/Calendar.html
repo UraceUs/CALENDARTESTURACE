@@ -485,20 +485,7 @@
             <p class="feedback info" id="periodHint" aria-live="polite"></p>
 
             <label class="section-label">Serviço</label>
-            <div class="service-options">
-              <button type="button" class="service-card" data-service="Professional Coaching">
-                <span class="service-icon">🏎️</span>
-                <span class="service-name">Professional Coaching</span>
-              </button>
-              <button type="button" class="service-card" data-service="Summer Camp">
-                <span class="service-icon">🏁☀️</span>
-                <span class="service-name">Summer Camp</span>
-              </button>
-              <button type="button" class="service-card" data-service="Trackside Support">
-                <span class="service-icon">🔧</span>
-                <span class="service-name">Trackside Support</span>
-              </button>
-            </div>
+            <div class="service-options" id="serviceOptions"></div>
             <p class="feedback info" id="serviceHint" aria-live="polite"></p>
             <input type="hidden" id="servico" name="servico" required />
             <input type="hidden" id="data" required />
@@ -560,11 +547,8 @@
       'https://calendar-backend-w6wm.onrender.com'
     ];
 
-    const serviceDetails = {
-      'Professional Coaching': { icon: '🏎️', label: 'Professional Coaching' },
-      'Summer Camp': { icon: '🏁☀️', label: 'Summer Camp' },
-      'Trackside Support': { icon: '🔧', label: 'Trackside Support' }
-    };
+    const DEFAULT_SERVICES = ['Professional Coaching', 'Summer Camp', 'Trackside Support'];
+    const DEFAULT_SERVICE_ICONS = ['🏎️', '🏁', '🔧', '🧑‍🏫', '⚙️', '📍', '🧪', '🎯'];
 
     const state = {
       currentMonth: new Date().getMonth(),
@@ -574,7 +558,8 @@
       capacidade: [],
       periodIndex: new Map(),
       blockedIndex: new Map(),
-      enabledServices: new Set(Object.keys(serviceDetails)),
+      allServices: [...DEFAULT_SERVICES],
+      enabledServices: new Set(DEFAULT_SERVICES),
       apiBase: '',
       isSubmitting: false,
       postSubmitActions: []
@@ -587,6 +572,7 @@
     const selectedDateText = document.getElementById('selectedDate');
     const dataInput = document.getElementById('data');
     const serviceInput = document.getElementById('servico');
+    const serviceOptions = document.getElementById('serviceOptions');
     const serviceHint = document.getElementById('serviceHint');
     const periodInput = document.getElementById('horario');
     const periodField = document.getElementById('periodoField');
@@ -597,8 +583,55 @@
     const kartingExperienceInput = document.getElementById('kartingExperience');
     const experienceDescriptionField = document.getElementById('experienceDescriptionField');
     const experienceDescriptionInput = document.getElementById('experienceDescription');
-    const serviceCards = document.querySelectorAll('.service-card');
     const periodCards = document.querySelectorAll('.period-card');
+
+    function getServiceIcon(serviceName, position) {
+      const normalized = String(serviceName || '');
+      const lower = normalized.toLowerCase();
+      if (lower.includes('coach')) {
+        return '🏎️';
+      }
+      if (lower.includes('camp')) {
+        return '🏁';
+      }
+      if (lower.includes('support')) {
+        return '🔧';
+      }
+
+      const base = normalized
+        .split('')
+        .reduce((acc, char) => acc + char.charCodeAt(0), 0);
+      const index = (base + Number(position || 0)) % DEFAULT_SERVICE_ICONS.length;
+      return DEFAULT_SERVICE_ICONS[index];
+    }
+
+    function renderServiceOptions() {
+      serviceOptions.innerHTML = '';
+
+      state.allServices.forEach((serviceName, index) => {
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'service-card';
+        card.dataset.service = serviceName;
+        card.style.display = state.enabledServices.has(serviceName) ? '' : 'none';
+
+        const icon = document.createElement('span');
+        icon.className = 'service-icon';
+        icon.textContent = getServiceIcon(serviceName, index);
+
+        const label = document.createElement('span');
+        label.className = 'service-name';
+        label.textContent = serviceName;
+
+        if (serviceInput.value === serviceName) {
+          card.classList.add('active');
+        }
+
+        card.appendChild(icon);
+        card.appendChild(label);
+        serviceOptions.appendChild(card);
+      });
+    }
 
     function setFeedback(target, type, message) {
       target.className = `feedback ${type}`;
@@ -936,16 +969,18 @@
     }
 
     function applyServiceVisibilityConfig(config) {
-      const allServices = Array.isArray(config && config.allServices)
-        ? config.allServices.filter(name => serviceDetails[name])
-        : Object.keys(serviceDetails);
+      const allServices = Array.isArray(config && config.allServices) && config.allServices.length > 0
+        ? config.allServices
+        : [...DEFAULT_SERVICES];
       const enabledServices = Array.isArray(config && config.enabledServices)
         ? config.enabledServices.filter(name => allServices.includes(name))
         : allServices;
 
+      state.allServices = allServices;
       state.enabledServices = new Set(enabledServices);
+      renderServiceOptions();
 
-      serviceCards.forEach(card => {
+      Array.from(serviceOptions.querySelectorAll('.service-card')).forEach(card => {
         const serviceName = card.dataset.service;
         const visible = state.enabledServices.has(serviceName);
         card.style.display = visible ? '' : 'none';
@@ -958,7 +993,7 @@
 
       if (enabledServices.length === 0) {
         serviceInput.value = '';
-        serviceCards.forEach(card => card.classList.remove('active'));
+        Array.from(serviceOptions.querySelectorAll('.service-card')).forEach(card => card.classList.remove('active'));
         serviceHint.textContent = 'No momento, nenhum serviço está disponível para reserva.';
         serviceHint.className = 'feedback error';
         return;
@@ -1241,7 +1276,7 @@
       if (!reserva.responsavelPiloto || reserva.responsavelPiloto.length < 2 || reserva.responsavelPiloto.length > 120) {
         errors.push('Informe o nome do responsável (2-120 caracteres).');
       }
-      if (!serviceDetails[reserva.servico]) {
+      if (!state.allServices.includes(reserva.servico)) {
         errors.push('Selecione um servico valido.');
       }
       if (reserva.servico && !state.enabledServices.has(reserva.servico)) {
@@ -1303,7 +1338,7 @@
       periodInput.value = '';
       dataInput.value = '';
       state.selectedDay = null;
-      serviceCards.forEach(card => card.classList.remove('active'));
+      Array.from(serviceOptions.querySelectorAll('.service-card')).forEach(card => card.classList.remove('active'));
       periodCards.forEach(card => card.classList.remove('active'));
       toggleExperienceDescriptionField();
       renderSelectedInfo();
@@ -1386,13 +1421,16 @@
     }
 
     function bindEvents() {
-      serviceCards.forEach(card => {
-        card.addEventListener('click', () => {
-          serviceCards.forEach(item => item.classList.remove('active'));
-          card.classList.add('active');
-          serviceInput.value = card.dataset.service;
-          renderCalendar();
-        });
+      serviceOptions.addEventListener('click', event => {
+        const card = event.target.closest('.service-card');
+        if (!card || card.style.display === 'none') {
+          return;
+        }
+
+        Array.from(serviceOptions.querySelectorAll('.service-card')).forEach(item => item.classList.remove('active'));
+        card.classList.add('active');
+        serviceInput.value = card.dataset.service;
+        renderCalendar();
       });
 
       periodCards.forEach(card => {
@@ -1445,8 +1483,8 @@
         setFeedback(formFeedback, 'info', '');
       } catch (error) {
         applyServiceVisibilityConfig({
-          allServices: Object.keys(serviceDetails),
-          enabledServices: Object.keys(serviceDetails)
+          allServices: DEFAULT_SERVICES,
+          enabledServices: DEFAULT_SERVICES
         });
         refreshCalendarUi();
         setFeedback(formFeedback, 'error', toUserMessage(error, 'Erro ao carregar reservas.'));

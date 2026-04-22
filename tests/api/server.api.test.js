@@ -429,4 +429,54 @@ describe('API routes', () => {
     expect(getResponse.status).toBe(200);
     expect(getResponse.body.enabledServices).toEqual(['Professional Coaching', 'Trackside Support']);
   });
+
+  it('POST /api/config/servicos allows adding a new service to the catalog', async () => {
+    const response = await request(app)
+      .post('/api/config/servicos')
+      .set('Content-Type', 'application/json')
+      .send({
+        allServices: ['Professional Coaching', 'Driver Development'],
+        enabledServices: ['Driver Development']
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      allServices: ['Professional Coaching', 'Driver Development'],
+      enabledServices: ['Driver Development']
+    });
+  });
+
+  it('POST /api/reservas rejects reservation for disabled service', async () => {
+    await request(app)
+      .post('/api/config/servicos')
+      .set('Content-Type', 'application/json')
+      .send({ enabledServices: ['Trackside Support'] });
+
+    const payload = {
+      nomePiloto: 'Piloto Bloqueado',
+      responsavelPiloto: 'Resp Bloqueado',
+      servico: 'Professional Coaching',
+      data: '2026-05-22',
+      periodo: 'manha',
+      email: 'bloqueado@example.com',
+      telefone: '11988887777',
+      age: '31',
+      height: '1.72m',
+      weight: '72kg',
+      waist: '81cm',
+      kartingExperience: 'Nao'
+    };
+
+    const response = await request(app)
+      .post('/api/reservas')
+      .set('Content-Type', 'application/json')
+      .send(payload);
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      error: {
+        code: 'VALIDATION_ERROR'
+      }
+    });
+  });
 });

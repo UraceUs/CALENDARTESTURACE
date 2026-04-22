@@ -61,13 +61,14 @@ const ASANA_CHECKLIST_SUBTASKS = [
   'Payment has been completed (invoice)?'
 ];
 
-const ALLOWED_SERVICES = new Set([
+const DEFAULT_SERVICES = [
   'Professional Coaching',
   'Summer Camp',
   'Trackside Support'
-]);
+];
 
-const ALL_SERVICES = Array.from(ALLOWED_SERVICES);
+const ALLOWED_SERVICES = new Set(DEFAULT_SERVICES);
+const ALL_SERVICES = Array.from(DEFAULT_SERVICES);
 
 const ALLOWED_PERIODS = new Set(['manha', 'tarde']);
 
@@ -1666,6 +1667,8 @@ async function removeCapacidade(data, periodo) {
 }
 
 function normalizeEnabledServices(values) {
+  const allServicesSet = new Set(ALL_SERVICES);
+
   if (!Array.isArray(values)) {
     return [];
   }
@@ -1673,7 +1676,40 @@ function normalizeEnabledServices(values) {
   const unique = new Set();
   values.forEach(value => {
     const normalized = normalizeText(value);
-    if (normalized && ALLOWED_SERVICES.has(normalized)) {
+    if (normalized && allServicesSet.has(normalized)) {
+      unique.add(normalized);
+    }
+  });
+
+  return Array.from(unique);
+}
+
+function normalizeAllServices(values) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  const unique = new Set();
+  values.forEach(value => {
+    const normalized = normalizeText(value);
+    if (normalized && normalized.length >= 2 && normalized.length <= 80) {
+      unique.add(normalized);
+    }
+  });
+
+  return Array.from(unique);
+}
+
+function normalizeEnabledServicesForCatalog(values, allServices) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  const allowed = new Set(Array.isArray(allServices) ? allServices : []);
+  const unique = new Set();
+  values.forEach(value => {
+    const normalized = normalizeText(value);
+    if (normalized && allowed.has(normalized)) {
       unique.add(normalized);
     }
   });
@@ -1693,18 +1729,22 @@ async function readServiceVisibilityConfig() {
   }
 
   const data = snapshot.data() || {};
-  const enabledServices = normalizeEnabledServices(data.enabledServices);
+  const allServices = normalizeAllServices(data.allServices);
+  const catalog = allServices.length > 0 ? allServices : ALL_SERVICES;
+  const enabledServices = normalizeEnabledServicesForCatalog(data.enabledServices, catalog);
+  const safeEnabled = Array.isArray(data.enabledServices) ? enabledServices : catalog;
 
   return {
-    allServices: ALL_SERVICES,
-    enabledServices,
+    allServices: catalog,
+    enabledServices: safeEnabled,
     updatedAt: asIsoDateTime(data.updatedAt)
   };
 }
 
-async function saveServiceVisibilityConfig(enabledServices) {
+async function saveServiceVisibilityConfig(allServices, enabledServices) {
   const ref = getDb().collection('config').doc('service_visibility');
   await ref.set({
+    allServices,
     enabledServices,
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   });
@@ -1789,7 +1829,7 @@ function isValidEmailAddress(value) {
   return true;
 }
 
-function validateReserva(payload) {
+function validateReserva(payload, allowedServices = ALLOWED_SERVICES) {
   const errors = [];
   const phoneRegex = /^[0-9()+\-\s]{8,20}$/;
 
@@ -1821,7 +1861,7 @@ function validateReserva(payload) {
     errors.push('Campo responsavelPiloto deve ter entre 2 e 120 caracteres.');
   }
 
-  if (!ALLOWED_SERVICES.has(servico)) {
+  if (!allowedServices.has(servico)) {
     errors.push('Campo servico invalido.');
   }
 
@@ -2059,7 +2099,9 @@ async function requestHandler(req, res) {
 
       try {
         const payload = await parseJsonBody(req);
-        const { errors, reserva } = validateReserva(payload || {});
+        const serviceConfig = await readServiceVisibilityConfig();
+        const allowedServices = new Set(serviceConfig.enabledServices || serviceConfig.allServices || ALL_SERVICES);
+        const { errors, reserva } = validateReserva(payload || {}, allowedServices);
         if (errors.length > 0) {
           sendError(res, 400, 'VALIDATION_ERROR', 'Dados da reserva invalidos.', errors);
           return;
@@ -2600,18 +2642,31 @@ async function requestHandler(req, res) {
     if (req.method === 'POST') {
       try {
         const payload = await parseJsonBody(req);
-        const provided = payload && payload.enabledServices;
+        const providedEnabled = payload && payload.enabledServices;
+        const providedAll = payload && payload.allServices;
         const errors = [];
 
-        if (!Array.isArray(provided)) {
+        if (!Array.isArray(providedEnabled)) {
           errors.push('Campo enabledServices deve ser um array.');
+        }
+
+        let allServices;
+        if (typeof providedAll === 'undefined') {
+          const current = await readServiceVisibilityConfig();
+          allServices = current.allServices;
         } else {
-          provided.forEach(value => {
-            const normalized = normalizeText(value);
-            if (!normalized || !ALLOWED_SERVICES.has(normalized)) {
-              errors.push(`Servico invalido: ${value}`);
-            }
-          });
+          if (!Array.isArray(providedAll)) {
+            errors.push('Campo allServices deve ser um array.');
+          }
+          allServices = normalizeAllServices(providedAll);
+          if (allServices.length === 0) {
+            errors.push('Campo allServices deve conter ao menos um serviço válido.');
+          }
+        }
+
+        const enabledServices = normalizeEnabledServicesForCatalog(providedEnabled, allServices || []);
+        if (Array.isArray(providedEnabled) && enabledServices.length !== providedEnabled.length) {
+          errors.push('enabledServices contem servicos invalidos ou nao cadastrados em allServices.');
         }
 
         if (errors.length > 0) {
@@ -2619,8 +2674,7 @@ async function requestHandler(req, res) {
           return;
         }
 
-        const enabledServices = normalizeEnabledServices(provided);
-        const updated = await saveServiceVisibilityConfig(enabledServices);
+        const updated = await saveServiceVisibilityConfig(allServices, enabledServices);
         sendJson(res, updated, 200);
       } catch (error) {
         if (error.message === 'PAYLOAD_TOO_LARGE') {

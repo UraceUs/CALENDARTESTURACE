@@ -465,15 +465,77 @@
     .service-visibility-item {
       display: flex;
       align-items: center;
-      gap: 8px;
+      justify-content: space-between;
+      gap: 10px;
       font-size: 0.92rem;
       color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      padding: 8px 10px;
     }
 
-    .service-visibility-item input {
+    .service-name-label {
+      font-weight: 600;
+      word-break: break-word;
+    }
+
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 24px;
+      flex: 0 0 auto;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+      position: absolute;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background-color: #c6ccda;
+      transition: 0.2s;
+      border-radius: 999px;
+    }
+
+    .slider:before {
+      content: '';
+      position: absolute;
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      top: 3px;
+      background-color: #fff;
+      transition: 0.2s;
+      border-radius: 50%;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    }
+
+    .switch input:checked + .slider {
+      background-color: var(--brand);
+    }
+
+    .switch input:checked + .slider:before {
+      transform: translateX(20px);
+    }
+
+    .service-add-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .service-add-row button {
       width: auto;
-      margin: 0;
-      transform: scale(1.05);
+      min-width: 130px;
+      margin-top: 6px;
     }
 
     .ops-panel {
@@ -609,6 +671,12 @@
           <div class="ops-panel">
             <h3>Serviços Visíveis no Cliente</h3>
             <p class="small-note">Marque os serviços que devem aparecer na área de serviços da página do cliente.</p>
+            <div class="service-add-row">
+              <label>Novo serviço
+                <input type="text" id="newServiceName" maxlength="80" placeholder="Ex.: Driver Development" />
+              </label>
+              <button type="button" id="addServiceBtn">Adicionar serviço</button>
+            </div>
             <div class="service-visibility-list" id="serviceVisibilityList"></div>
             <button type="button" class="btn-primary" id="saveServicesBtn">Salvar serviços visíveis</button>
             <p class="feedback" id="serviceVisibilityFeedback" aria-live="polite"></p>
@@ -691,6 +759,8 @@
     const capacityFeedback = document.getElementById('capacityFeedback');
     const capacityList = document.getElementById('capacityList');
     const serviceVisibilityList = document.getElementById('serviceVisibilityList');
+    const newServiceName = document.getElementById('newServiceName');
+    const addServiceBtn = document.getElementById('addServiceBtn');
     const saveServicesBtn = document.getElementById('saveServicesBtn');
     const serviceVisibilityFeedback = document.getElementById('serviceVisibilityFeedback');
 
@@ -927,6 +997,14 @@
       return value;
     }
 
+    function normalizeServiceName(value) {
+      if (typeof value !== 'string') {
+        return '';
+      }
+
+      return value.replace(/\s+/g, ' ').trim();
+    }
+
     function getPeriodCapacity(date, period) {
       const custom = state.capacidade.find(item => item && item.data === date && item.periodo === period);
       const parsed = custom ? Number(custom.vagas) : null;
@@ -1144,20 +1222,30 @@
 
       const enabledSet = new Set(state.enabledServices);
       state.allServices.forEach(serviceName => {
-        const label = document.createElement('label');
-        label.className = 'service-visibility-item';
+        const row = document.createElement('div');
+        row.className = 'service-visibility-item';
+
+        const name = document.createElement('span');
+        name.className = 'service-name-label';
+        name.textContent = serviceName;
+
+        const switchLabel = document.createElement('label');
+        switchLabel.className = 'switch';
 
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.value = serviceName;
         checkbox.checked = enabledSet.has(serviceName);
 
-        const text = document.createElement('span');
-        text.textContent = serviceName;
+        const slider = document.createElement('span');
+        slider.className = 'slider';
 
-        label.appendChild(checkbox);
-        label.appendChild(text);
-        serviceVisibilityList.appendChild(label);
+        switchLabel.appendChild(checkbox);
+        switchLabel.appendChild(slider);
+
+        row.appendChild(name);
+        row.appendChild(switchLabel);
+        serviceVisibilityList.appendChild(row);
       });
     }
 
@@ -1165,6 +1253,29 @@
       return Array.from(serviceVisibilityList.querySelectorAll('input[type="checkbox"]:checked'))
         .map(input => input.value)
         .filter(Boolean);
+    }
+
+    async function handleAddService() {
+      const candidate = normalizeServiceName(newServiceName.value);
+      if (!candidate || candidate.length < 2 || candidate.length > 80) {
+        setFeedback(serviceVisibilityFeedback, 'error', 'Informe um nome de serviço entre 2 e 80 caracteres.');
+        return;
+      }
+
+      const duplicate = state.allServices.some(item => item.toLowerCase() === candidate.toLowerCase());
+      if (duplicate) {
+        setFeedback(serviceVisibilityFeedback, 'error', 'Este serviço já está cadastrado.');
+        return;
+      }
+
+      state.allServices.push(candidate);
+      if (!state.enabledServices.includes(candidate)) {
+        state.enabledServices.push(candidate);
+      }
+
+      newServiceName.value = '';
+      renderServiceVisibilityPanel();
+      setFeedback(serviceVisibilityFeedback, 'success', 'Serviço adicionado. Clique em salvar para publicar no cliente.');
     }
 
     async function saveDisponibilidade(payload) {
@@ -1613,7 +1724,10 @@
         saveServicesBtn.disabled = true;
         setFeedback(serviceVisibilityFeedback, '', 'Salvando serviços visíveis...');
 
-        const updated = await saveServiceVisibilityConfig({ enabledServices });
+        const updated = await saveServiceVisibilityConfig({
+          allServices: state.allServices,
+          enabledServices
+        });
         state.allServices = Array.isArray(updated.allServices) ? updated.allServices : state.allServices;
         state.enabledServices = Array.isArray(updated.enabledServices) ? updated.enabledServices : enabledServices;
         renderServiceVisibilityPanel();
@@ -1705,6 +1819,13 @@
     blockBtn.addEventListener('click', () => setBlockState(true));
     unblockBtn.addEventListener('click', () => setBlockState(false));
     addCapacityBtn.addEventListener('click', handleAddCapacity);
+    addServiceBtn.addEventListener('click', handleAddService);
+    newServiceName.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        handleAddService();
+      }
+    });
     saveServicesBtn.addEventListener('click', handleSaveVisibleServices);
 
     async function init() {
