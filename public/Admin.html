@@ -349,6 +349,14 @@
       margin-bottom: 0;
     }
 
+    .list-item-action {
+      width: auto;
+      min-width: 92px;
+      margin-top: 0;
+      padding: 7px 10px;
+      font-size: 0.82rem;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
@@ -1094,6 +1102,25 @@
       return fetchCapacidade();
     }
 
+    async function removeCapacity(payload) {
+      const response = await fetchWithApi('/api/capacidade', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error(await parseApiError(response, 'Erro ao excluir ajuste de capacidade.'));
+      }
+
+      const result = await response.json();
+      if (Array.isArray(result.capacidades)) {
+        return result.capacidades;
+      }
+
+      return fetchCapacidade();
+    }
+
     async function moveReserva(id, payload) {
       const response = await fetchWithApi(`/api/reservas/${encodeURIComponent(id)}/move`, {
         method: 'PUT',
@@ -1206,7 +1233,31 @@
         const text = document.createElement('span');
         text.textContent = `${item.data} - ${formatPeriod(item.periodo)}: ${item.vagas} vagas`;
 
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'list-item-action';
+        btn.textContent = 'Excluir ajuste';
+        btn.addEventListener('click', async () => {
+          try {
+            btn.disabled = true;
+            setFeedback(capacityFeedback, '', '');
+            state.capacidade = await removeCapacity({
+              data: item.data,
+              periodo: item.periodo
+            });
+            renderCapacidade();
+            renderAdminCalendar();
+            updateSelectedDayNote();
+            setFeedback(capacityFeedback, 'success', 'Ajuste de vagas removido com sucesso.');
+          } catch (error) {
+            setFeedback(capacityFeedback, 'error', error.message || 'Falha ao excluir ajuste de vagas.');
+          } finally {
+            btn.disabled = false;
+          }
+        });
+
         row.appendChild(text);
+        row.appendChild(btn);
         capacityList.appendChild(row);
       });
     }

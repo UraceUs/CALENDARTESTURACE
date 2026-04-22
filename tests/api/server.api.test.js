@@ -241,6 +241,31 @@ describe('API routes', () => {
     );
   });
 
+  it('DELETE /api/capacidade removes manual capacity adjustment for a period', async () => {
+    await request(app)
+      .post('/api/capacidade')
+      .set('Content-Type', 'application/json')
+      .send({ data: '2026-06-11', periodo: 'tarde', quantidade: 2 });
+
+    const deleteResponse = await request(app)
+      .delete('/api/capacidade')
+      .set('Content-Type', 'application/json')
+      .send({ data: '2026-06-11', periodo: 'tarde' });
+
+    expect(deleteResponse.status).toBe(200);
+    expect(deleteResponse.body).toMatchObject({
+      removed: true,
+      capacidade: {
+        data: '2026-06-11',
+        periodo: 'tarde'
+      }
+    });
+
+    const getResponse = await request(app).get('/api/capacidade');
+    expect(getResponse.status).toBe(200);
+    expect(getResponse.body).toEqual([]);
+  });
+
   it('POST /api/disponibilidade returns validation error for invalid period', async () => {
     const response = await request(app)
       .post('/api/disponibilidade')

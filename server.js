@@ -1648,6 +1648,12 @@ async function setCapacidade(data, periodo, vagas) {
   return { data, periodo, vagas };
 }
 
+async function removeCapacidade(data, periodo) {
+  const id = `${data}_${periodo}`;
+  await getDb().collection('capacidade').doc(id).delete();
+  return readCapacidades();
+}
+
 function isValidDateString(date) {
   if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return false;
@@ -2381,6 +2387,73 @@ async function requestHandler(req, res) {
         }
 
         sendError(res, 500, 'WRITE_CAPACITY_ERROR', `Erro interno ao salvar capacidade. ${error.message}`);
+      }
+
+      return;
+    }
+
+    if (req.method === 'DELETE') {
+      if (!ensureStorageReady()) {
+        sendError(
+          res,
+          500,
+          'STORAGE_NOT_READY',
+          `Firestore nao inicializado. ${firestoreState.reason || 'Verifique credenciais.'}`
+        );
+        return;
+      }
+
+      try {
+        const payload = await parseJsonBody(req);
+        const data = normalizeText(payload && payload.data);
+        const periodo = normalizeText(payload && payload.periodo);
+        const errors = [];
+
+        if (!isValidDateString(data)) {
+          errors.push('Campo data deve estar no formato YYYY-MM-DD e ser valido.');
+        }
+
+        if (!ALLOWED_PERIODS.has(periodo)) {
+          errors.push('Campo periodo deve ser manha ou tarde.');
+        }
+
+        if (errors.length > 0) {
+          sendError(res, 400, 'VALIDATION_ERROR', 'Dados de capacidade invalidos.', errors);
+          return;
+        }
+
+        const updated = await removeCapacidade(data, periodo);
+        sendJson(
+          res,
+          {
+            removed: true,
+            capacidade: {
+              data,
+              periodo
+            },
+            capacidades: updated
+          },
+          200
+        );
+      } catch (error) {
+        if (error.message === 'PAYLOAD_TOO_LARGE') {
+          sendError(res, 413, 'PAYLOAD_TOO_LARGE', 'Corpo da requisicao muito grande.');
+          return;
+        }
+        if (error.message === 'EMPTY_BODY') {
+          sendError(res, 400, 'EMPTY_BODY', 'O corpo da requisicao nao pode estar vazio.');
+          return;
+        }
+        if (error.message === 'INVALID_JSON') {
+          sendError(res, 400, 'INVALID_JSON', 'JSON invalido no corpo da requisicao.');
+          return;
+        }
+        if (isCredentialError(error)) {
+          sendError(res, 500, 'STORAGE_NOT_READY', credentialHelpMessage());
+          return;
+        }
+
+        sendError(res, 500, 'DELETE_CAPACITY_ERROR', `Erro interno ao excluir capacidade. ${error.message}`);
       }
 
       return;
