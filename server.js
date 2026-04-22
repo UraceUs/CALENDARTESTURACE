@@ -45,6 +45,10 @@ const ASANA_TASK_TEMPLATE_NAME =
 const ASANA_TASK_TEMPLATE_GID = (process.env.ASANA_TASK_TEMPLATE_GID || '').trim();
 const DOCUSIGN_WEBHOOK_URL = (process.env.DOCUSIGN_WEBHOOK_URL || '').trim();
 const DOCUSIGN_WEBHOOK_TOKEN = (process.env.DOCUSIGN_WEBHOOK_TOKEN || '').trim();
+const GMAIL_CLIENT_ID = (process.env.GMAIL_CLIENT_ID || '').trim();
+const GMAIL_CLIENT_SECRET = (process.env.GMAIL_CLIENT_SECRET || '').trim();
+const GMAIL_REFRESH_TOKEN = (process.env.GMAIL_REFRESH_TOKEN || '').trim();
+const GMAIL_FROM = (process.env.GMAIL_FROM || process.env.SMTP_FROM || process.env.SMTP_USER || '').trim();
 
 const ASANA_CHECKLIST_SUBTASKS = [
   'Enviado Security Deposit?',
@@ -75,12 +79,34 @@ let emailTransporterInitPromise = null;
 let emailFallbackTransporter = null;
 let emailFallbackTransporterInitPromise = null;
 
+function parseFirebaseServiceAccount(rawValue) {
+  const normalizedValue = String(rawValue || '').trim();
+
+  if (!normalizedValue) {
+    return null;
+  }
+
+  const upperValue = normalizedValue.toUpperCase();
+  const looksLikePlaceholder =
+    upperValue.startsWith('COLE_AQUI') ||
+    upperValue.includes('YOUR_PRIVATE_KEY') ||
+    upperValue.includes('YOUR_CLIENT_ID');
+
+  if (looksLikePlaceholder) {
+    throw new Error(
+      'FIREBASE_SERVICE_ACCOUNT_JSON contem placeholder. Cole o JSON real da service account do Firebase, sem "COLE_AQUI".'
+    );
+  }
+
+  return JSON.parse(normalizedValue);
+}
+
 function initFirestore() {
   try {
     if (!admin.apps.length) {
       const rawServiceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
       if (rawServiceAccount) {
-        const serviceAccount = JSON.parse(rawServiceAccount);
+        const serviceAccount = parseFirebaseServiceAccount(rawServiceAccount);
         admin.initializeApp({
           credential: admin.credential.cert(serviceAccount),
           projectId: serviceAccount.project_id || FIREBASE_PROJECT_ID
@@ -229,7 +255,7 @@ function isResendConfigured() {
 }
 
 function isAnyEmailProviderConfigured() {
-  return isEmailConfigured() || isResendConfigured();
+  return isGmailApiConfigured() || isEmailConfigured() || isResendConfigured();
 }
 
 function getMissingEmailConfigFields() {
@@ -509,21 +535,161 @@ async function sendMailWithResend(message) {
   };
 }
 
+function isGmailApiConfigured() {
+  return Boolean(GMAIL_CLIENT_ID) && Boolean(GMAIL_CLIENT_SECRET) && Boolean(GMAIL_REFRESH_TOKEN) && Boolean(GMAIL_FROM);
+}
+
+async function getGmailAccessToken() {
+  if (typeof fetch !== 'function') {
+    throw new Error('FETCH_NOT_AVAILABLE');
+  }
+
+  const params = new URLSearchParams({
+    client_id: GMAIL_CLIENT_ID,
+    client_secret: GMAIL_CLIENT_SECRET,
+    refresh_token: GMAIL_REFRESH_TOKEN,
+    grant_type: 'refresh_token'
+  });
+
+  const response = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params.toString()
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const errMsg = (data && data.error_description) || (data && data.error) || JSON.stringify(data);
+    throw new Error(`GMAIL_TOKEN_ERROR: ${errMsg}`);
+  }
+
+  const token = data && data.access_token;
+  if (!token) {
+    throw new Error('GMAIL_TOKEN_MISSING');
+  }
+
+  return token;
+}
+
+function buildGmailRawMessage(message) {
+  const from = message.from || GMAIL_FROM;
+  const to = Array.isArray(message.to) ? message.to.join(', ') : (message.to || '');
+  const encodedSubject = `=?UTF-8?B?${Buffer.from(message.subject || '', 'utf8').toString('base64')}?=`;
+  const boundary = `boundary_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  const hasHtml = Boolean(message.html);
+  const hasText = Boolean(message.text);
+
+  const headerLines = [
+    'MIME-Version: 1.0',
+    `From: ${from}`,
+    `To: ${to}`,
+    `Subject: ${encodedSubject}`
+  ];
+
+  if (message.replyTo) {
+    headerLines.push(`Reply-To: ${message.replyTo}`);
+  }
+
+  let bodyLines;
+
+  if (hasHtml && hasText) {
+    headerLines.push(`Content-Type: multipart/alternative; boundary="${boundary}"`);
+    bodyLines = [
+      '',
+      `--${boundary}`,
+      'Content-Type: text/plain; charset=UTF-8',
+      'Content-Transfer-Encoding: base64',
+      '',
+      Buffer.from(message.text, 'utf8').toString('base64'),
+      '',
+      `--${boundary}`,
+      'Content-Type: text/html; charset=UTF-8',
+      'Content-Transfer-Encoding: base64',
+      '',
+      Buffer.from(message.html, 'utf8').toString('base64'),
+      '',
+      `--${boundary}--`
+    ];
+  } else if (hasHtml) {
+    headerLines.push('Content-Type: text/html; charset=UTF-8');
+    headerLines.push('Content-Transfer-Encoding: base64');
+    bodyLines = ['', Buffer.from(message.html, 'utf8').toString('base64')];
+  } else {
+    headerLines.push('Content-Type: text/plain; charset=UTF-8');
+    headerLines.push('Content-Transfer-Encoding: base64');
+    bodyLines = ['', Buffer.from(message.text || '', 'utf8').toString('base64')];
+  }
+
+  const fullMessage = [...headerLines, ...bodyLines].join('\r\n');
+  return Buffer.from(fullMessage, 'utf8').toString('base64url');
+}
+
+async function sendMailWithGmailApi(message) {
+  if (typeof fetch !== 'function') {
+    throw new Error('FETCH_NOT_AVAILABLE');
+  }
+
+  if (!isGmailApiConfigured()) {
+    throw new Error('GMAIL_API_NOT_CONFIGURED');
+  }
+
+  const accessToken = await getGmailAccessToken();
+  const raw = buildGmailRawMessage(message);
+
+  const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/sendMessage', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ raw })
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const errMsg =
+      (data && data.error && data.error.message) ||
+      JSON.stringify(data);
+    throw new Error(`GMAIL_API_ERROR_${response.status}: ${errMsg}`);
+  }
+
+  return {
+    messageId: data && data.id ? data.id : null
+  };
+}
+
 async function sendMailWithProviderFallback(message) {
+  const gmailApiAvailable = isGmailApiConfigured();
   const smtpAvailable = isEmailConfigured();
   const resendAvailable = isResendConfigured();
-  let smtpError = null;
+  let lastError = null;
+
+  if (gmailApiAvailable) {
+    try {
+      const gmailInfo = await sendMailWithGmailApi(message);
+      return {
+        info: gmailInfo,
+        fallbackUsed: false,
+        provider: 'gmail-api'
+      };
+    } catch (error) {
+      lastError = error;
+      console.error('Falha no envio Gmail API:', error.message);
+    }
+  }
 
   if (smtpAvailable) {
     try {
       const smtp = await sendMailWithSmtpFallback(message);
       return {
         info: smtp.info,
-        fallbackUsed: Boolean(smtp.fallbackUsed),
+        fallbackUsed: Boolean(smtp.fallbackUsed) || gmailApiAvailable,
         provider: smtp.fallbackUsed ? 'smtp-fallback' : 'smtp'
       };
     } catch (error) {
-      smtpError = error;
+      lastError = error;
       console.error('Falha no envio SMTP:', error.message);
     }
   }
@@ -537,8 +703,8 @@ async function sendMailWithProviderFallback(message) {
     };
   }
 
-  if (smtpError) {
-    throw smtpError;
+  if (lastError) {
+    throw lastError;
   }
 
   throw new Error('EMAIL_NOT_CONFIGURED');
