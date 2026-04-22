@@ -1395,7 +1395,16 @@ async function sendSupportReservationNotificationEmail(reserva) {
   ].join('\n');
 
   const htmlSummary = summaryLines
-    .map(line => `<p style="margin:4px 0;">${line}</p>`)
+    .map(line => {
+      const separatorIndex = line.indexOf(':');
+      if (separatorIndex === -1) {
+        return `<p style="margin:4px 0;">${line}</p>`;
+      }
+
+      const label = line.slice(0, separatorIndex + 1);
+      const value = line.slice(separatorIndex + 1).trimStart();
+      return `<p style="margin:4px 0;"><strong>${label}</strong> ${value}</p>`;
+    })
     .join('');
 
   const message = {
