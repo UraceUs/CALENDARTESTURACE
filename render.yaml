@@ -26,6 +26,18 @@ services:
         sync: false
       - key: SMTP_REPLY_TO
         sync: false
+      - key: GMAIL_CLIENT_ID
+        sync: false
+      - key: GMAIL_CLIENT_SECRET
+        sync: false
+      - key: GMAIL_REFRESH_TOKEN
+        sync: false
+      - key: GMAIL_FROM
+        value: support@urace.us
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM
+        sync: false
       - key: SUPPORT_NOTIFICATION_EMAIL
         value: support@urace.us
       - key: ASANA_PERSONAL_ACCESS_TOKEN

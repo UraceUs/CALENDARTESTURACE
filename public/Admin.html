@@ -740,17 +740,17 @@
     function getApiCandidates() {
       const candidates = [];
 
+      const configuredApiBase = getConfiguredApiBase();
+      if (configuredApiBase) {
+        candidates.push(configuredApiBase);
+      }
+
       CANONICAL_API_BASES.forEach(base => {
         const normalized = normalizeApiBase(base);
         if (normalized) {
           candidates.push(normalized);
         }
       });
-
-      const configuredApiBase = getConfiguredApiBase();
-      if (configuredApiBase) {
-        candidates.push(configuredApiBase);
-      }
 
       return [...new Set(candidates)];
     }
