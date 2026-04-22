@@ -1553,6 +1553,36 @@ async function moveReservaById(id, data, periodo) {
   };
 }
 
+async function getReservaById(id) {
+  const ref = getDb().collection('reservas').doc(id);
+  const snapshot = await ref.get();
+  if (!snapshot.exists) {
+    return null;
+  }
+
+  const data = snapshot.data() || {};
+  return {
+    id: snapshot.id,
+    nome: data.nomePiloto || data.nome || '',
+    nomePiloto: data.nomePiloto || data.nome || '',
+    responsavelPiloto: data.responsavelPiloto || data.nomeResponsavel || data.responsavel || '',
+    servico: data.servico || '',
+    data: data.data || '',
+    periodo: data.periodo || '',
+    email: data.email || '',
+    telefone: data.telefone || '',
+    serviceDatesForMonth: data.serviceDatesForMonth || '',
+    age: data.age || '',
+    height: data.height || '',
+    weight: data.weight || '',
+    waist: data.waist || '',
+    kartingExperience: data.kartingExperience || '',
+    experienceDescription: data.experienceDescription || data.descrevaSuaExperiencia || '',
+    createdAt: asIsoDateTime(data.createdAt) || null,
+    movedAt: asIsoDateTime(data.movedAt) || null
+  };
+}
+
 async function deleteReservaById(id) {
   const ref = getDb().collection('reservas').doc(id);
   const snapshot = await ref.get();
@@ -1856,6 +1886,7 @@ function isBlocked(disponibilidade, data, periodo) {
 async function requestHandler(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const moveMatch = url.pathname.match(/^\/api\/reservas\/([^/]+)\/move$/);
+  const resendConfirmationMatch = url.pathname.match(/^\/api\/reservas\/([^/]+)\/resend-confirmation$/);
   const deleteMatch = url.pathname.match(/^\/api\/reservas\/([^/]+)$/);
 
   if (req.method === 'OPTIONS') {
@@ -2071,6 +2102,52 @@ async function requestHandler(req, res) {
         return;
       }
       sendError(res, 500, 'WRITE_ERROR', `Erro interno ao salvar movimentacao da reserva. ${error.message}`);
+    }
+
+    return;
+  }
+
+  if (resendConfirmationMatch && req.method === 'POST') {
+    if (!ensureStorageReady()) {
+      sendError(
+        res,
+        500,
+        'STORAGE_NOT_READY',
+        `Firestore nao inicializado. ${firestoreState.reason || 'Verifique credenciais.'}`
+      );
+      return;
+    }
+
+    const reservaId = decodeURIComponent(resendConfirmationMatch[1]);
+
+    try {
+      const reserva = await getReservaById(reservaId);
+      if (!reserva) {
+        sendError(res, 404, 'NOT_FOUND', 'Reserva nao encontrada.');
+        return;
+      }
+
+      const [emailConfirmation, supportNotification] = await Promise.all([
+        sendReservaConfirmationEmail(reserva),
+        sendSupportReservationNotificationEmail(reserva)
+      ]);
+
+      sendJson(
+        res,
+        {
+          id: reservaId,
+          emailConfirmation,
+          supportNotification
+        },
+        200
+      );
+    } catch (error) {
+      if (isCredentialError(error)) {
+        sendError(res, 500, 'STORAGE_NOT_READY', credentialHelpMessage());
+        return;
+      }
+
+      sendError(res, 500, 'EMAIL_RESEND_ERROR', `Erro ao reenviar e-mails da reserva. ${error.message}`);
     }
 
     return;

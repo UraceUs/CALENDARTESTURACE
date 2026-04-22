@@ -288,4 +288,46 @@ describe('API routes', () => {
       }
     });
   });
+
+  it('POST /api/reservas/:id/resend-confirmation resends user and admin confirmations', async () => {
+    const payload = {
+      nomePiloto: 'Piloto Reenvio',
+      responsavelPiloto: 'Resp Reenvio',
+      servico: 'Professional Coaching',
+      data: '2026-05-21',
+      periodo: 'tarde',
+      email: 'reenvio@example.com',
+      telefone: '11988887777',
+      age: '30',
+      height: '1.75m',
+      weight: '75kg',
+      waist: '82cm',
+      kartingExperience: 'Nao'
+    };
+
+    const createResponse = await request(app)
+      .post('/api/reservas')
+      .set('Content-Type', 'application/json')
+      .send(payload);
+
+    expect(createResponse.status).toBe(201);
+    const reservaId = createResponse.body && createResponse.body.reserva && createResponse.body.reserva.id;
+    expect(reservaId).toBeTruthy();
+
+    const resendResponse = await request(app)
+      .post(`/api/reservas/${encodeURIComponent(reservaId)}/resend-confirmation`);
+
+    expect(resendResponse.status).toBe(200);
+    expect(resendResponse.body).toMatchObject({
+      id: reservaId,
+      emailConfirmation: {
+        sent: false,
+        reason: 'EMAIL_NOT_CONFIGURED'
+      },
+      supportNotification: {
+        sent: false,
+        reason: 'EMAIL_NOT_CONFIGURED'
+      }
+    });
+  });
 });

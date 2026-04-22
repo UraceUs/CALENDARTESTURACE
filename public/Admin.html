@@ -400,6 +400,21 @@
       background: #ffe9ed;
     }
 
+    .btn-mail {
+      width: auto;
+      min-width: 44px;
+      padding: 8px 10px;
+      border: 1px solid #b9c7ee;
+      border-radius: 8px;
+      background: #eff4ff;
+      color: var(--brand-strong);
+      font-weight: 700;
+    }
+
+    .btn-mail:hover {
+      background: #e4ecff;
+    }
+
     .small-note {
       margin: 2px 0 8px;
       font-size: 0.82rem;
@@ -549,6 +564,7 @@
                 <th>Reserva Atual</th>
                 <th>Contato</th>
                 <th>Mover Reserva</th>
+                <th>Reenviar E-mails</th>
                 <th>Excluir</th>
               </tr>
             </thead>
@@ -1060,6 +1076,18 @@
       return true;
     }
 
+    async function resendReservaConfirmation(id) {
+      const response = await fetchWithApi(`/api/reservas/${encodeURIComponent(id)}/resend-confirmation`, {
+        method: 'POST'
+      });
+
+      if (!response.ok) {
+        throw new Error(await parseApiError(response, 'Erro ao reenviar e-mails de confirmação.'));
+      }
+
+      return response.json();
+    }
+
     function renderDisponibilidade() {
       availabilityList.innerHTML = '';
 
@@ -1211,7 +1239,7 @@
       if (state.reservas.length === 0) {
         const row = document.createElement('tr');
         const cell = document.createElement('td');
-        cell.colSpan = 7;
+        cell.colSpan = 8;
         cell.textContent = 'Nenhuma reserva cadastrada.';
         row.appendChild(cell);
         reservationTableBody.appendChild(row);
@@ -1246,6 +1274,42 @@
 
         const moveCell = document.createElement('td');
         moveCell.appendChild(createMoveCell(reserva));
+
+        const resendCell = document.createElement('td');
+        const resendBtn = document.createElement('button');
+        resendBtn.type = 'button';
+        resendBtn.className = 'btn-mail';
+        resendBtn.title = 'Reenviar confirmação para cliente e admin';
+        resendBtn.textContent = '✉';
+
+        resendBtn.addEventListener('click', async () => {
+          try {
+            resendBtn.disabled = true;
+            setFeedback(reservationsFeedback, '', 'Reenviando e-mails...');
+
+            const result = await resendReservaConfirmation(reserva.id);
+            const userSent = Boolean(result && result.emailConfirmation && result.emailConfirmation.sent);
+            const adminSent = Boolean(result && result.supportNotification && result.supportNotification.sent);
+
+            if (userSent && adminSent) {
+              setFeedback(reservationsFeedback, 'success', 'Confirmações reenviadas para cliente e admin.');
+            } else {
+              const userReason = (result && result.emailConfirmation && (result.emailConfirmation.reason || result.emailConfirmation.error)) || 'UNKNOWN';
+              const adminReason = (result && result.supportNotification && (result.supportNotification.reason || result.supportNotification.error)) || 'UNKNOWN';
+              setFeedback(
+                reservationsFeedback,
+                'error',
+                `Reenvio parcial/falhou. Cliente: ${userReason}. Admin: ${adminReason}.`
+              );
+            }
+          } catch (error) {
+            setFeedback(reservationsFeedback, 'error', error.message || 'Falha ao reenviar e-mails.');
+          } finally {
+            resendBtn.disabled = false;
+          }
+        });
+
+        resendCell.appendChild(resendBtn);
 
         const deleteCell = document.createElement('td');
         const deleteBtn = document.createElement('button');
@@ -1283,6 +1347,7 @@
         row.appendChild(currentCell);
         row.appendChild(contatoCell);
         row.appendChild(moveCell);
+        row.appendChild(resendCell);
         row.appendChild(deleteCell);
 
         reservationTableBody.appendChild(row);
