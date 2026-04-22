@@ -203,29 +203,32 @@
       gap: 4px;
     }
 
-    .slot-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      border: 1px solid #90a4b8;
-      background: #ffffff;
-      display: inline-block;
+    .slot-car {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.78rem;
+      line-height: 1;
+      transform-origin: center;
     }
 
-    .slot-dot.filled {
-      background: var(--danger);
-      border-color: var(--danger);
+    .slot-car.empty {
+      opacity: 0.3;
+      filter: grayscale(1);
     }
 
-    .slot-dot.selected {
-      background: var(--accent);
-      border-color: var(--accent);
+    .slot-car.filled {
+      opacity: 1;
     }
 
-    .slot-dot.blocked {
-      background: var(--danger);
-      border-color: var(--danger);
+    .slot-car.selected {
+      transform: scale(1.08);
+      filter: drop-shadow(0 0 2px rgba(31, 47, 111, 0.35));
+    }
+
+    .slot-car.blocked {
       opacity: 0.55;
+      filter: grayscale(1);
     }
 
     .selected-date {
@@ -826,20 +829,22 @@
 
       for (let i = 0; i < safeTotal; i++) {
         if (blocked) {
-          dots.push('<span class="slot-dot filled blocked"></span>');
+          dots.push('<span class="slot-car filled blocked">🏎️</span>');
           continue;
         }
 
         if (showSelected && i === safeOccupied) {
-          dots.push('<span class="slot-dot selected"></span>');
+          dots.push('<span class="slot-car selected">🏎️</span>');
           continue;
         }
 
-        const classes = ['slot-dot'];
+        const classes = ['slot-car'];
         if (i < safeOccupied) {
           classes.push('filled');
+        } else {
+          classes.push('empty');
         }
-        dots.push(`<span class="${classes.join(' ')}"></span>`);
+        dots.push(`<span class="${classes.join(' ')}">🏎️</span>`);
       }
 
       return dots.join('');
