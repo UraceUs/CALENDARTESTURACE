@@ -69,6 +69,11 @@ const DEFAULT_SERVICES = [
 
 const ALLOWED_SERVICES = new Set(DEFAULT_SERVICES);
 const ALL_SERVICES = Array.from(DEFAULT_SERVICES);
+const DEFAULT_SERVICE_ICONS = {
+  'Professional Coaching': '🏎️',
+  'Summer Camp': '🏁',
+  'Trackside Support': '🔧'
+};
 
 const ALLOWED_PERIODS = new Set(['manha', 'tarde']);
 
@@ -1717,6 +1722,28 @@ function normalizeEnabledServicesForCatalog(values, allServices) {
   return Array.from(unique);
 }
 
+function normalizeServiceIconsForCatalog(rawIcons, allServices) {
+  const icons = rawIcons && typeof rawIcons === 'object' ? rawIcons : {};
+  const normalized = {};
+
+  (Array.isArray(allServices) ? allServices : []).forEach(serviceName => {
+    const customIcon = normalizeText(icons[serviceName]);
+    if (customIcon && customIcon.length <= 8) {
+      normalized[serviceName] = customIcon;
+      return;
+    }
+
+    if (DEFAULT_SERVICE_ICONS[serviceName]) {
+      normalized[serviceName] = DEFAULT_SERVICE_ICONS[serviceName];
+      return;
+    }
+
+    normalized[serviceName] = '🏎️';
+  });
+
+  return normalized;
+}
+
 async function readServiceVisibilityConfig() {
   const ref = getDb().collection('config').doc('service_visibility');
   const snapshot = await ref.get();
@@ -1724,6 +1751,7 @@ async function readServiceVisibilityConfig() {
     return {
       allServices: ALL_SERVICES,
       enabledServices: ALL_SERVICES,
+      serviceIcons: normalizeServiceIconsForCatalog({}, ALL_SERVICES),
       updatedAt: null
     };
   }
@@ -1733,19 +1761,22 @@ async function readServiceVisibilityConfig() {
   const catalog = allServices.length > 0 ? allServices : ALL_SERVICES;
   const enabledServices = normalizeEnabledServicesForCatalog(data.enabledServices, catalog);
   const safeEnabled = Array.isArray(data.enabledServices) ? enabledServices : catalog;
+  const serviceIcons = normalizeServiceIconsForCatalog(data.serviceIcons, catalog);
 
   return {
     allServices: catalog,
     enabledServices: safeEnabled,
+    serviceIcons,
     updatedAt: asIsoDateTime(data.updatedAt)
   };
 }
 
-async function saveServiceVisibilityConfig(allServices, enabledServices) {
+async function saveServiceVisibilityConfig(allServices, enabledServices, serviceIcons) {
   const ref = getDb().collection('config').doc('service_visibility');
   await ref.set({
     allServices,
     enabledServices,
+    serviceIcons,
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   });
 
@@ -2644,6 +2675,7 @@ async function requestHandler(req, res) {
         const payload = await parseJsonBody(req);
         const providedEnabled = payload && payload.enabledServices;
         const providedAll = payload && payload.allServices;
+        const providedIcons = payload && payload.serviceIcons;
         const errors = [];
 
         if (!Array.isArray(providedEnabled)) {
@@ -2669,12 +2701,23 @@ async function requestHandler(req, res) {
           errors.push('enabledServices contem servicos invalidos ou nao cadastrados em allServices.');
         }
 
+        let serviceIcons;
+        if (typeof providedIcons === 'undefined') {
+          const current = await readServiceVisibilityConfig();
+          serviceIcons = normalizeServiceIconsForCatalog(current.serviceIcons, allServices || []);
+        } else {
+          if (!providedIcons || typeof providedIcons !== 'object' || Array.isArray(providedIcons)) {
+            errors.push('Campo serviceIcons deve ser um objeto.');
+          }
+          serviceIcons = normalizeServiceIconsForCatalog(providedIcons, allServices || []);
+        }
+
         if (errors.length > 0) {
           sendError(res, 400, 'VALIDATION_ERROR', 'Dados de servicos visiveis invalidos.', errors);
           return;
         }
 
-        const updated = await saveServiceVisibilityConfig(allServices, enabledServices);
+        const updated = await saveServiceVisibilityConfig(allServices, enabledServices, serviceIcons);
         sendJson(res, updated, 200);
       } catch (error) {
         if (error.message === 'PAYLOAD_TOO_LARGE') {

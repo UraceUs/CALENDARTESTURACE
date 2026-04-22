@@ -408,7 +408,12 @@ describe('API routes', () => {
         'Professional Coaching',
         'Summer Camp',
         'Trackside Support'
-      ])
+      ]),
+      serviceIcons: expect.objectContaining({
+        'Professional Coaching': '🏎️',
+        'Summer Camp': '🏁',
+        'Trackside Support': '🔧'
+      })
     });
   });
 
@@ -436,13 +441,21 @@ describe('API routes', () => {
       .set('Content-Type', 'application/json')
       .send({
         allServices: ['Professional Coaching', 'Driver Development'],
-        enabledServices: ['Driver Development']
+        enabledServices: ['Driver Development'],
+        serviceIcons: {
+          'Professional Coaching': '🏎️',
+          'Driver Development': '🧑‍🏫'
+        }
       });
 
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       allServices: ['Professional Coaching', 'Driver Development'],
-      enabledServices: ['Driver Development']
+      enabledServices: ['Driver Development'],
+      serviceIcons: {
+        'Professional Coaching': '🏎️',
+        'Driver Development': '🧑‍🏫'
+      }
     });
   });
 

@@ -475,6 +475,22 @@
       padding: 8px 10px;
     }
 
+    .service-config-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .service-emoji-input {
+      width: 74px;
+      min-width: 74px;
+      text-align: center;
+      margin-top: 0;
+      padding: 7px 8px;
+      font-size: 1rem;
+    }
+
     .service-name-label {
       font-weight: 600;
       word-break: break-word;
@@ -527,7 +543,7 @@
 
     .service-add-row {
       display: grid;
-      grid-template-columns: 1fr auto;
+      grid-template-columns: 1fr 100px auto;
       gap: 8px;
       margin-bottom: 10px;
     }
@@ -675,6 +691,9 @@
               <label>Novo serviço
                 <input type="text" id="newServiceName" maxlength="80" placeholder="Ex.: Driver Development" />
               </label>
+              <label>Emoji
+                <input type="text" id="newServiceEmoji" maxlength="8" placeholder="🏎️" />
+              </label>
               <button type="button" id="addServiceBtn">Adicionar serviço</button>
             </div>
             <div class="service-visibility-list" id="serviceVisibilityList"></div>
@@ -735,7 +754,8 @@
       apiBase: '',
       resendStatusById: {},
       allServices: [],
-      enabledServices: []
+      enabledServices: [],
+      serviceIcons: {}
     };
 
     const LOCAL_API_BASE_KEY = 'calendar_api_base';
@@ -760,6 +780,7 @@
     const capacityList = document.getElementById('capacityList');
     const serviceVisibilityList = document.getElementById('serviceVisibilityList');
     const newServiceName = document.getElementById('newServiceName');
+    const newServiceEmoji = document.getElementById('newServiceEmoji');
     const addServiceBtn = document.getElementById('addServiceBtn');
     const saveServicesBtn = document.getElementById('saveServicesBtn');
     const serviceVisibilityFeedback = document.getElementById('serviceVisibilityFeedback');
@@ -1005,6 +1026,19 @@
       return value.replace(/\s+/g, ' ').trim();
     }
 
+    function normalizeServiceEmoji(value) {
+      if (typeof value !== 'string') {
+        return '';
+      }
+
+      const normalized = value.trim();
+      if (!normalized || normalized.length > 8) {
+        return '';
+      }
+
+      return normalized;
+    }
+
     function getPeriodCapacity(date, period) {
       const custom = state.capacidade.find(item => item && item.data === date && item.periodo === period);
       const parsed = custom ? Number(custom.vagas) : null;
@@ -1225,6 +1259,16 @@
         const row = document.createElement('div');
         row.className = 'service-visibility-item';
 
+        const left = document.createElement('div');
+        left.className = 'service-config-left';
+
+        const emojiInput = document.createElement('input');
+        emojiInput.type = 'text';
+        emojiInput.maxLength = 8;
+        emojiInput.className = 'service-emoji-input';
+        emojiInput.dataset.service = serviceName;
+        emojiInput.value = state.serviceIcons[serviceName] || '';
+
         const name = document.createElement('span');
         name.className = 'service-name-label';
         name.textContent = serviceName;
@@ -1243,7 +1287,10 @@
         switchLabel.appendChild(checkbox);
         switchLabel.appendChild(slider);
 
-        row.appendChild(name);
+        left.appendChild(emojiInput);
+        left.appendChild(name);
+
+        row.appendChild(left);
         row.appendChild(switchLabel);
         serviceVisibilityList.appendChild(row);
       });
@@ -1253,6 +1300,20 @@
       return Array.from(serviceVisibilityList.querySelectorAll('input[type="checkbox"]:checked'))
         .map(input => input.value)
         .filter(Boolean);
+    }
+
+    function collectServiceIconsFromPanel() {
+      const iconMap = {};
+
+      Array.from(serviceVisibilityList.querySelectorAll('.service-emoji-input')).forEach(input => {
+        const serviceName = input.dataset.service;
+        const emoji = normalizeServiceEmoji(input.value);
+        if (serviceName) {
+          iconMap[serviceName] = emoji || '🏎️';
+        }
+      });
+
+      return iconMap;
     }
 
     async function handleAddService() {
@@ -1273,7 +1334,11 @@
         state.enabledServices.push(candidate);
       }
 
+      const emoji = normalizeServiceEmoji(newServiceEmoji.value) || '🏎️';
+      state.serviceIcons[candidate] = emoji;
+
       newServiceName.value = '';
+      newServiceEmoji.value = '';
       renderServiceVisibilityPanel();
       setFeedback(serviceVisibilityFeedback, 'success', 'Serviço adicionado. Clique em salvar para publicar no cliente.');
     }
@@ -1708,6 +1773,7 @@
       state.capacidade = capacidade;
       state.allServices = Array.isArray(serviceConfig.allServices) ? serviceConfig.allServices : [];
       state.enabledServices = Array.isArray(serviceConfig.enabledServices) ? serviceConfig.enabledServices : [];
+      state.serviceIcons = serviceConfig && typeof serviceConfig.serviceIcons === 'object' ? serviceConfig.serviceIcons : {};
       syncResendStatusMap(reservas);
       renderReservas();
       renderDisponibilidade();
@@ -1719,6 +1785,7 @@
 
     async function handleSaveVisibleServices() {
       const enabledServices = collectEnabledServicesFromPanel();
+      const serviceIcons = collectServiceIconsFromPanel();
 
       try {
         saveServicesBtn.disabled = true;
@@ -1726,10 +1793,12 @@
 
         const updated = await saveServiceVisibilityConfig({
           allServices: state.allServices,
-          enabledServices
+          enabledServices,
+          serviceIcons
         });
         state.allServices = Array.isArray(updated.allServices) ? updated.allServices : state.allServices;
         state.enabledServices = Array.isArray(updated.enabledServices) ? updated.enabledServices : enabledServices;
+        state.serviceIcons = updated && typeof updated.serviceIcons === 'object' ? updated.serviceIcons : serviceIcons;
         renderServiceVisibilityPanel();
         setFeedback(serviceVisibilityFeedback, 'success', 'Serviços visíveis atualizados com sucesso.');
       } catch (error) {
@@ -1821,6 +1890,12 @@
     addCapacityBtn.addEventListener('click', handleAddCapacity);
     addServiceBtn.addEventListener('click', handleAddService);
     newServiceName.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        handleAddService();
+      }
+    });
+    newServiceEmoji.addEventListener('keydown', event => {
       if (event.key === 'Enter') {
         event.preventDefault();
         handleAddService();

@@ -548,6 +548,11 @@
     ];
 
     const DEFAULT_SERVICES = ['Professional Coaching', 'Summer Camp', 'Trackside Support'];
+    const DEFAULT_SERVICE_ICONS_BY_NAME = {
+      'Professional Coaching': '🏎️',
+      'Summer Camp': '🏁',
+      'Trackside Support': '🔧'
+    };
     const DEFAULT_SERVICE_ICONS = ['🏎️', '🏁', '🔧', '🧑‍🏫', '⚙️', '📍', '🧪', '🎯'];
 
     const state = {
@@ -560,6 +565,7 @@
       blockedIndex: new Map(),
       allServices: [...DEFAULT_SERVICES],
       enabledServices: new Set(DEFAULT_SERVICES),
+      serviceIcons: { ...DEFAULT_SERVICE_ICONS_BY_NAME },
       apiBase: '',
       isSubmitting: false,
       postSubmitActions: []
@@ -586,6 +592,15 @@
     const periodCards = document.querySelectorAll('.period-card');
 
     function getServiceIcon(serviceName, position) {
+      const configured = state.serviceIcons && state.serviceIcons[serviceName];
+      if (configured) {
+        return configured;
+      }
+
+      if (DEFAULT_SERVICE_ICONS_BY_NAME[serviceName]) {
+        return DEFAULT_SERVICE_ICONS_BY_NAME[serviceName];
+      }
+
       const normalized = String(serviceName || '');
       const lower = normalized.toLowerCase();
       if (lower.includes('coach')) {
@@ -975,9 +990,19 @@
       const enabledServices = Array.isArray(config && config.enabledServices)
         ? config.enabledServices.filter(name => allServices.includes(name))
         : allServices;
+      const incomingIcons = config && typeof config.serviceIcons === 'object' ? config.serviceIcons : {};
 
       state.allServices = allServices;
       state.enabledServices = new Set(enabledServices);
+      state.serviceIcons = {};
+      allServices.forEach((serviceName, index) => {
+        const icon = String(incomingIcons[serviceName] || '').trim();
+        if (icon && icon.length <= 8) {
+          state.serviceIcons[serviceName] = icon;
+          return;
+        }
+        state.serviceIcons[serviceName] = getServiceIcon(serviceName, index);
+      });
       renderServiceOptions();
 
       Array.from(serviceOptions.querySelectorAll('.service-card')).forEach(card => {
