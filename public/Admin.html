@@ -415,6 +415,27 @@
       background: #e4ecff;
     }
 
+    .mail-action-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .mail-status {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .mail-status.sent {
+      color: var(--success);
+    }
+
+    .mail-status.unsent {
+      color: var(--danger);
+    }
+
     .small-note {
       margin: 2px 0 8px;
       font-size: 0.82rem;
@@ -600,7 +621,8 @@
       currentMonth: new Date().getMonth(),
       currentYear: new Date().getFullYear(),
       selectedDay: '',
-      apiBase: ''
+      apiBase: '',
+      resendStatusById: {}
     };
 
     const LOCAL_API_BASE_KEY = 'calendar_api_base';
@@ -628,6 +650,30 @@
     function setFeedback(target, type, message) {
       target.className = `feedback ${type}`;
       target.textContent = message || '';
+    }
+
+    function deriveResendStatusFromReserva(reserva) {
+      const status = reserva && reserva.emailDeliveryStatus;
+      if (!status || typeof status !== 'object') {
+        return 'nao enviado';
+      }
+
+      if (status.userSent === true && status.adminSent === true) {
+        return 'enviado';
+      }
+
+      return 'nao enviado';
+    }
+
+    function syncResendStatusMap(reservas) {
+      const next = {};
+      (Array.isArray(reservas) ? reservas : []).forEach(item => {
+        if (!item || !item.id) {
+          return;
+        }
+        next[item.id] = deriveResendStatusFromReserva(item);
+      });
+      state.resendStatusById = next;
     }
 
     function isGithubPagesHost() {
@@ -1276,24 +1322,50 @@
         moveCell.appendChild(createMoveCell(reserva));
 
         const resendCell = document.createElement('td');
+        const resendWrap = document.createElement('div');
+        resendWrap.className = 'mail-action-wrap';
+
         const resendBtn = document.createElement('button');
         resendBtn.type = 'button';
         resendBtn.className = 'btn-mail';
         resendBtn.title = 'Reenviar confirmação para cliente e admin';
         resendBtn.textContent = '✉';
 
+        const statusText = document.createElement('span');
+        statusText.className = 'mail-status';
+        statusText.textContent = state.resendStatusById[reserva.id] || 'nao enviado';
+
+        function applyMailStatus(value) {
+          statusText.textContent = value;
+          statusText.classList.remove('sent', 'unsent');
+          if (value === 'enviado') {
+            statusText.classList.add('sent');
+            return;
+          }
+          if (value === 'nao enviado') {
+            statusText.classList.add('unsent');
+          }
+        }
+
+        applyMailStatus(statusText.textContent);
+
         resendBtn.addEventListener('click', async () => {
           try {
             resendBtn.disabled = true;
             setFeedback(reservationsFeedback, '', 'Reenviando e-mails...');
+            applyMailStatus('enviando...');
 
             const result = await resendReservaConfirmation(reserva.id);
             const userSent = Boolean(result && result.emailConfirmation && result.emailConfirmation.sent);
             const adminSent = Boolean(result && result.supportNotification && result.supportNotification.sent);
 
             if (userSent && adminSent) {
+              state.resendStatusById[reserva.id] = 'enviado';
+              applyMailStatus('enviado');
               setFeedback(reservationsFeedback, 'success', 'Confirmações reenviadas para cliente e admin.');
             } else {
+              state.resendStatusById[reserva.id] = 'nao enviado';
+              applyMailStatus('nao enviado');
               const userReason = (result && result.emailConfirmation && (result.emailConfirmation.reason || result.emailConfirmation.error)) || 'UNKNOWN';
               const adminReason = (result && result.supportNotification && (result.supportNotification.reason || result.supportNotification.error)) || 'UNKNOWN';
               setFeedback(
@@ -1303,13 +1375,17 @@
               );
             }
           } catch (error) {
+            state.resendStatusById[reserva.id] = 'nao enviado';
+            applyMailStatus('nao enviado');
             setFeedback(reservationsFeedback, 'error', error.message || 'Falha ao reenviar e-mails.');
           } finally {
             resendBtn.disabled = false;
           }
         });
 
-        resendCell.appendChild(resendBtn);
+        resendWrap.appendChild(resendBtn);
+        resendWrap.appendChild(statusText);
+        resendCell.appendChild(resendWrap);
 
         const deleteCell = document.createElement('td');
         const deleteBtn = document.createElement('button');
@@ -1328,6 +1404,7 @@
             deleteBtn.disabled = true;
             await deleteReserva(reserva.id);
             state.reservas = state.reservas.filter(item => item.id !== reserva.id);
+            delete state.resendStatusById[reserva.id];
             renderReservas();
             renderAdminCalendar();
             updateSelectedDayNote();
@@ -1364,6 +1441,7 @@
       state.reservas = reservas;
       state.disponibilidade = disponibilidade;
       state.capacidade = capacidade;
+      syncResendStatusMap(reservas);
       renderReservas();
       renderDisponibilidade();
       renderCapacidade();

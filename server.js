@@ -637,7 +637,7 @@ async function sendMailWithGmailApi(message) {
   const accessToken = await getGmailAccessToken();
   const raw = buildGmailRawMessage(message);
 
-  const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/sendMessage', {
+  const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -1458,6 +1458,7 @@ async function readReservas() {
       waist: data.waist || '',
       kartingExperience: data.kartingExperience || '',
       experienceDescription: data.experienceDescription || data.descrevaSuaExperiencia || '',
+      emailDeliveryStatus: data.emailDeliveryStatus || null,
       createdAt: asIsoDateTime(data.createdAt) || asIsoDateTime(data.created_at),
       movedAt: asIsoDateTime(data.movedAt) || null
     });
@@ -1502,6 +1503,13 @@ async function readCapacidades() {
 async function createReserva(reserva) {
   const ref = await getDb().collection('reservas').add({
     ...reserva,
+    emailDeliveryStatus: {
+      userSent: false,
+      adminSent: false,
+      userReason: 'NOT_SENT_YET',
+      adminReason: 'NOT_SENT_YET',
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    },
     createdAt: admin.firestore.FieldValue.serverTimestamp()
   });
   const snapshot = await ref.get();
@@ -1548,6 +1556,7 @@ async function moveReservaById(id, data, periodo) {
     waist: updated.waist || '',
     kartingExperience: updated.kartingExperience || '',
     experienceDescription: updated.experienceDescription || updated.descrevaSuaExperiencia || '',
+    emailDeliveryStatus: updated.emailDeliveryStatus || null,
     createdAt: asIsoDateTime(updated.createdAt) || null,
     movedAt: asIsoDateTime(updated.movedAt) || new Date().toISOString()
   };
@@ -1578,9 +1587,25 @@ async function getReservaById(id) {
     waist: data.waist || '',
     kartingExperience: data.kartingExperience || '',
     experienceDescription: data.experienceDescription || data.descrevaSuaExperiencia || '',
+    emailDeliveryStatus: data.emailDeliveryStatus || null,
     createdAt: asIsoDateTime(data.createdAt) || null,
     movedAt: asIsoDateTime(data.movedAt) || null
   };
+}
+
+async function saveReservaEmailDeliveryStatus(id, emailConfirmation, supportNotification) {
+  const ref = getDb().collection('reservas').doc(id);
+  await ref.update({
+    emailDeliveryStatus: {
+      userSent: Boolean(emailConfirmation && emailConfirmation.sent),
+      adminSent: Boolean(supportNotification && supportNotification.sent),
+      userReason: (emailConfirmation && (emailConfirmation.reason || emailConfirmation.error)) || null,
+      adminReason: (supportNotification && (supportNotification.reason || supportNotification.error)) || null,
+      userProvider: (emailConfirmation && emailConfirmation.provider) || null,
+      adminProvider: (supportNotification && supportNotification.provider) || null,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }
+  });
 }
 
 async function deleteReservaById(id) {
@@ -1975,6 +2000,12 @@ async function requestHandler(req, res) {
           sendSupportReservationNotificationEmail(reservaToSave)
         ]);
 
+        await saveReservaEmailDeliveryStatus(
+          reservaToSave.id,
+          emailConfirmation,
+          supportNotification
+        );
+
         sendJson(
           res,
           {
@@ -2131,6 +2162,12 @@ async function requestHandler(req, res) {
         sendReservaConfirmationEmail(reserva),
         sendSupportReservationNotificationEmail(reserva)
       ]);
+
+      await saveReservaEmailDeliveryStatus(
+        reservaId,
+        emailConfirmation,
+        supportNotification
+      );
 
       sendJson(
         res,
