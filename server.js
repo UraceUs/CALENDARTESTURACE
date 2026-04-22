@@ -1311,8 +1311,7 @@ async function sendReservaConfirmationEmail(reserva) {
   }
 
   if (!isAnyEmailProviderConfigured()) {
-    const missingFields = getMissingEmailConfigFields();
-    console.warn(`Envio de e-mail desativado: configure SMTP (${missingFields.join(', ')}) ou RESEND_API_KEY/RESEND_FROM.`);
+    console.warn('Envio de e-mail desativado: configure GMAIL_CLIENT_ID/GMAIL_CLIENT_SECRET/GMAIL_REFRESH_TOKEN, SMTP (SMTP_USER/SMTP_PASS/SMTP_FROM) ou RESEND_API_KEY/RESEND_FROM.');
     return { sent: false, reason: 'EMAIL_NOT_CONFIGURED' };
   }
 
@@ -1940,21 +1939,20 @@ async function requestHandler(req, res) {
         }
 
         const reservaToSave = await createReserva(reserva);
-        const emailConfirmation = isAnyEmailProviderConfigured()
-          ? { sent: false, pending: true, reason: 'BACKGROUND_DELIVERY' }
-          : { sent: false, pending: false, reason: 'EMAIL_NOT_CONFIGURED' };
+        const [emailConfirmation, supportNotification] = await Promise.all([
+          sendReservaConfirmationEmail(reservaToSave),
+          sendSupportReservationNotificationEmail(reservaToSave)
+        ]);
 
         sendJson(
           res,
           {
             reserva: reservaToSave,
             emailConfirmation,
-            supportNotification: { sent: false, pending: true, reason: 'BACKGROUND_DELIVERY' }
+            supportNotification
           },
           201
         );
-        runConfirmationEmailInBackground(reservaToSave);
-        runSupportNotificationInBackground(reservaToSave);
         runPostReservaAutomationInBackground(reservaToSave, emailConfirmation);
       } catch (error) {
         if (error.message === 'PAYLOAD_TOO_LARGE') {

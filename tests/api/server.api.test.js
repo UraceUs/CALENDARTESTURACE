@@ -156,7 +156,7 @@ describe('API routes', () => {
     expect(response.body).toHaveLength(0);
   });
 
-  it.skip('POST /api/reservas saves reservation and marks email as pending when SMTP is not configured', async () => {
+  it('POST /api/reservas saves reservation and returns immediate email delivery status', async () => {
     const payload = {
       nomePiloto: 'Teste Piloto',
       responsavelPiloto: 'Teste Responsavel',
@@ -189,13 +189,11 @@ describe('API routes', () => {
       },
       emailConfirmation: {
         sent: false,
-        pending: false,
         reason: 'EMAIL_NOT_CONFIGURED'
       },
       supportNotification: {
         sent: false,
-        pending: true,
-        reason: 'BACKGROUND_DELIVERY'
+        reason: 'EMAIL_NOT_CONFIGURED'
       }
     });
 
