@@ -3,7 +3,8 @@ const request = require('supertest');
 const dbState = {
   reservas: [],
   disponibilidade: [],
-  capacidade: []
+  capacidade: [],
+  config: []
 };
 
 let idCounter = 0;
@@ -136,6 +137,7 @@ function resetState() {
   dbState.reservas.length = 0;
   dbState.disponibilidade.length = 0;
   dbState.capacidade.length = 0;
+  dbState.config.length = 0;
   idCounter = 0;
 }
 
@@ -389,5 +391,42 @@ describe('API routes', () => {
         reason: 'EMAIL_NOT_CONFIGURED'
       }
     });
+  });
+
+  it('GET /api/config/servicos returns default visibility for all services', async () => {
+    const response = await request(app)
+      .get('/api/config/servicos');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      allServices: expect.arrayContaining([
+        'Professional Coaching',
+        'Summer Camp',
+        'Trackside Support'
+      ]),
+      enabledServices: expect.arrayContaining([
+        'Professional Coaching',
+        'Summer Camp',
+        'Trackside Support'
+      ])
+    });
+  });
+
+  it('POST /api/config/servicos updates visible services', async () => {
+    const response = await request(app)
+      .post('/api/config/servicos')
+      .set('Content-Type', 'application/json')
+      .send({ enabledServices: ['Professional Coaching', 'Trackside Support'] });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      enabledServices: ['Professional Coaching', 'Trackside Support']
+    });
+
+    const getResponse = await request(app)
+      .get('/api/config/servicos');
+
+    expect(getResponse.status).toBe(200);
+    expect(getResponse.body.enabledServices).toEqual(['Professional Coaching', 'Trackside Support']);
   });
 });

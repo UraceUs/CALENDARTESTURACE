@@ -499,6 +499,7 @@
                 <span class="service-name">Trackside Support</span>
               </button>
             </div>
+            <p class="feedback info" id="serviceHint" aria-live="polite"></p>
             <input type="hidden" id="servico" name="servico" required />
             <input type="hidden" id="data" required />
 
@@ -573,6 +574,7 @@
       capacidade: [],
       periodIndex: new Map(),
       blockedIndex: new Map(),
+      enabledServices: new Set(Object.keys(serviceDetails)),
       apiBase: '',
       isSubmitting: false,
       postSubmitActions: []
@@ -585,6 +587,7 @@
     const selectedDateText = document.getElementById('selectedDate');
     const dataInput = document.getElementById('data');
     const serviceInput = document.getElementById('servico');
+    const serviceHint = document.getElementById('serviceHint');
     const periodInput = document.getElementById('horario');
     const periodField = document.getElementById('periodoField');
     const periodHint = document.getElementById('periodHint');
@@ -924,6 +927,47 @@
       return Array.isArray(data) ? data : [];
     }
 
+    async function loadServiceVisibilityConfig() {
+      const response = await fetchWithApi('/api/config/servicos');
+      if (!response.ok) {
+        throw new Error(await readApiError(response, 'Nao foi possivel carregar servicos visiveis.'));
+      }
+      return response.json();
+    }
+
+    function applyServiceVisibilityConfig(config) {
+      const allServices = Array.isArray(config && config.allServices)
+        ? config.allServices.filter(name => serviceDetails[name])
+        : Object.keys(serviceDetails);
+      const enabledServices = Array.isArray(config && config.enabledServices)
+        ? config.enabledServices.filter(name => allServices.includes(name))
+        : allServices;
+
+      state.enabledServices = new Set(enabledServices);
+
+      serviceCards.forEach(card => {
+        const serviceName = card.dataset.service;
+        const visible = state.enabledServices.has(serviceName);
+        card.style.display = visible ? '' : 'none';
+
+        if (!visible && serviceInput.value === serviceName) {
+          serviceInput.value = '';
+          card.classList.remove('active');
+        }
+      });
+
+      if (enabledServices.length === 0) {
+        serviceInput.value = '';
+        serviceCards.forEach(card => card.classList.remove('active'));
+        serviceHint.textContent = 'No momento, nenhum serviço está disponível para reserva.';
+        serviceHint.className = 'feedback error';
+        return;
+      }
+
+      serviceHint.textContent = '';
+      serviceHint.className = 'feedback info';
+    }
+
     async function saveReserva(reserva) {
       const response = await fetchWithApi('/api/reservas', {
         method: 'POST',
@@ -1200,6 +1244,9 @@
       if (!serviceDetails[reserva.servico]) {
         errors.push('Selecione um servico valido.');
       }
+      if (reserva.servico && !state.enabledServices.has(reserva.servico)) {
+        errors.push('Este servico nao esta disponivel no momento.');
+      }
       if (!isValidDateString(reserva.data)) {
         errors.push('Selecione uma data valida no calendario.');
       }
@@ -1382,19 +1429,25 @@
         if (!hasApi) {
           throw new Error('API_UNAVAILABLE');
         }
-        const [reservas, disponibilidade, capacidade] = await Promise.all([
+        const [reservas, disponibilidade, capacidade, serviceConfig] = await Promise.all([
           loadReservas(),
           loadDisponibilidade(),
-          loadCapacidade()
+          loadCapacidade(),
+          loadServiceVisibilityConfig()
         ]);
 
         state.reservas = reservas;
         state.capacidade = capacidade;
         rebuildPeriodIndex();
         rebuildBlockedIndex(disponibilidade);
+        applyServiceVisibilityConfig(serviceConfig);
         refreshCalendarUi();
         setFeedback(formFeedback, 'info', '');
       } catch (error) {
+        applyServiceVisibilityConfig({
+          allServices: Object.keys(serviceDetails),
+          enabledServices: Object.keys(serviceDetails)
+        });
         refreshCalendarUi();
         setFeedback(formFeedback, 'error', toUserMessage(error, 'Erro ao carregar reservas.'));
       }

@@ -67,6 +67,8 @@ const ALLOWED_SERVICES = new Set([
   'Trackside Support'
 ]);
 
+const ALL_SERVICES = Array.from(ALLOWED_SERVICES);
+
 const ALLOWED_PERIODS = new Set(['manha', 'tarde']);
 
 const firestoreState = {
@@ -1663,6 +1665,53 @@ async function removeCapacidade(data, periodo) {
   return readCapacidades();
 }
 
+function normalizeEnabledServices(values) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  const unique = new Set();
+  values.forEach(value => {
+    const normalized = normalizeText(value);
+    if (normalized && ALLOWED_SERVICES.has(normalized)) {
+      unique.add(normalized);
+    }
+  });
+
+  return Array.from(unique);
+}
+
+async function readServiceVisibilityConfig() {
+  const ref = getDb().collection('config').doc('service_visibility');
+  const snapshot = await ref.get();
+  if (!snapshot.exists) {
+    return {
+      allServices: ALL_SERVICES,
+      enabledServices: ALL_SERVICES,
+      updatedAt: null
+    };
+  }
+
+  const data = snapshot.data() || {};
+  const enabledServices = normalizeEnabledServices(data.enabledServices);
+
+  return {
+    allServices: ALL_SERVICES,
+    enabledServices,
+    updatedAt: asIsoDateTime(data.updatedAt)
+  };
+}
+
+async function saveServiceVisibilityConfig(enabledServices) {
+  const ref = getDb().collection('config').doc('service_visibility');
+  await ref.set({
+    enabledServices,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  return readServiceVisibilityConfig();
+}
+
 function isValidDateString(date) {
   if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return false;
@@ -2519,6 +2568,85 @@ async function requestHandler(req, res) {
     }
 
     sendError(res, 405, 'METHOD_NOT_ALLOWED', 'Metodo nao permitido para /api/capacidade.');
+    return;
+  }
+
+  if (url.pathname === '/api/config/servicos') {
+    if (!ensureStorageReady()) {
+      sendError(
+        res,
+        500,
+        'STORAGE_NOT_READY',
+        `Firestore nao inicializado. ${firestoreState.reason || 'Verifique credenciais.'}`
+      );
+      return;
+    }
+
+    if (req.method === 'GET') {
+      try {
+        const config = await readServiceVisibilityConfig();
+        sendJson(res, config, 200);
+      } catch (error) {
+        if (isCredentialError(error)) {
+          sendError(res, 500, 'STORAGE_NOT_READY', credentialHelpMessage());
+          return;
+        }
+
+        sendError(res, 500, 'READ_SERVICE_CONFIG_ERROR', `Erro interno ao ler servicos visiveis. ${error.message}`);
+      }
+      return;
+    }
+
+    if (req.method === 'POST') {
+      try {
+        const payload = await parseJsonBody(req);
+        const provided = payload && payload.enabledServices;
+        const errors = [];
+
+        if (!Array.isArray(provided)) {
+          errors.push('Campo enabledServices deve ser um array.');
+        } else {
+          provided.forEach(value => {
+            const normalized = normalizeText(value);
+            if (!normalized || !ALLOWED_SERVICES.has(normalized)) {
+              errors.push(`Servico invalido: ${value}`);
+            }
+          });
+        }
+
+        if (errors.length > 0) {
+          sendError(res, 400, 'VALIDATION_ERROR', 'Dados de servicos visiveis invalidos.', errors);
+          return;
+        }
+
+        const enabledServices = normalizeEnabledServices(provided);
+        const updated = await saveServiceVisibilityConfig(enabledServices);
+        sendJson(res, updated, 200);
+      } catch (error) {
+        if (error.message === 'PAYLOAD_TOO_LARGE') {
+          sendError(res, 413, 'PAYLOAD_TOO_LARGE', 'Corpo da requisicao muito grande.');
+          return;
+        }
+        if (error.message === 'EMPTY_BODY') {
+          sendError(res, 400, 'EMPTY_BODY', 'O corpo da requisicao nao pode estar vazio.');
+          return;
+        }
+        if (error.message === 'INVALID_JSON') {
+          sendError(res, 400, 'INVALID_JSON', 'JSON invalido no corpo da requisicao.');
+          return;
+        }
+        if (isCredentialError(error)) {
+          sendError(res, 500, 'STORAGE_NOT_READY', credentialHelpMessage());
+          return;
+        }
+
+        sendError(res, 500, 'WRITE_SERVICE_CONFIG_ERROR', `Erro interno ao salvar servicos visiveis. ${error.message}`);
+      }
+
+      return;
+    }
+
+    sendError(res, 405, 'METHOD_NOT_ALLOWED', 'Metodo nao permitido para /api/config/servicos.');
     return;
   }
 

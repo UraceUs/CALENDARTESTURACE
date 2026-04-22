@@ -456,6 +456,26 @@
       gap: 14px;
     }
 
+    .service-visibility-list {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .service-visibility-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.92rem;
+      color: var(--text);
+    }
+
+    .service-visibility-item input {
+      width: auto;
+      margin: 0;
+      transform: scale(1.05);
+    }
+
     .ops-panel {
       border: 1px solid var(--line);
       border-radius: 12px;
@@ -585,6 +605,14 @@
 
             <div class="list" id="capacityList"></div>
           </div>
+
+          <div class="ops-panel">
+            <h3>Serviços Visíveis no Cliente</h3>
+            <p class="small-note">Marque os serviços que devem aparecer na área de serviços da página do cliente.</p>
+            <div class="service-visibility-list" id="serviceVisibilityList"></div>
+            <button type="button" class="btn-primary" id="saveServicesBtn">Salvar serviços visíveis</button>
+            <p class="feedback" id="serviceVisibilityFeedback" aria-live="polite"></p>
+          </div>
         </div>
       </section>
 
@@ -637,7 +665,9 @@
       currentYear: new Date().getFullYear(),
       selectedDay: '',
       apiBase: '',
-      resendStatusById: {}
+      resendStatusById: {},
+      allServices: [],
+      enabledServices: []
     };
 
     const LOCAL_API_BASE_KEY = 'calendar_api_base';
@@ -660,6 +690,9 @@
     const addCapacityBtn = document.getElementById('addCapacityBtn');
     const capacityFeedback = document.getElementById('capacityFeedback');
     const capacityList = document.getElementById('capacityList');
+    const serviceVisibilityList = document.getElementById('serviceVisibilityList');
+    const saveServicesBtn = document.getElementById('saveServicesBtn');
+    const serviceVisibilityFeedback = document.getElementById('serviceVisibilityFeedback');
 
     const reservationsFeedback = document.getElementById('reservationsFeedback');
     const reservationTableBody = document.getElementById('reservationTableBody');
@@ -1074,6 +1107,64 @@
       }
       const data = await response.json();
       return Array.isArray(data) ? data : [];
+    }
+
+    async function fetchServiceVisibilityConfig() {
+      const response = await fetchWithApi('/api/config/servicos');
+      if (!response.ok) {
+        throw new Error(await parseApiError(response, 'Erro ao carregar serviços visíveis.'));
+      }
+      return response.json();
+    }
+
+    async function saveServiceVisibilityConfig(payload) {
+      const response = await fetchWithApi('/api/config/servicos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error(await parseApiError(response, 'Erro ao salvar serviços visíveis.'));
+      }
+
+      return response.json();
+    }
+
+    function renderServiceVisibilityPanel() {
+      serviceVisibilityList.innerHTML = '';
+
+      if (!state.allServices.length) {
+        const empty = document.createElement('p');
+        empty.className = 'small-note';
+        empty.textContent = 'Nenhum serviço disponível para configuração.';
+        serviceVisibilityList.appendChild(empty);
+        return;
+      }
+
+      const enabledSet = new Set(state.enabledServices);
+      state.allServices.forEach(serviceName => {
+        const label = document.createElement('label');
+        label.className = 'service-visibility-item';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = serviceName;
+        checkbox.checked = enabledSet.has(serviceName);
+
+        const text = document.createElement('span');
+        text.textContent = serviceName;
+
+        label.appendChild(checkbox);
+        label.appendChild(text);
+        serviceVisibilityList.appendChild(label);
+      });
+    }
+
+    function collectEnabledServicesFromPanel() {
+      return Array.from(serviceVisibilityList.querySelectorAll('input[type="checkbox"]:checked'))
+        .map(input => input.value)
+        .filter(Boolean);
     }
 
     async function saveDisponibilidade(payload) {
@@ -1494,21 +1585,44 @@
     }
 
     async function refreshAll() {
-      const [reservas, disponibilidade, capacidade] = await Promise.all([
+      const [reservas, disponibilidade, capacidade, serviceConfig] = await Promise.all([
         fetchReservas(),
         fetchDisponibilidade(),
-        fetchCapacidade()
+        fetchCapacidade(),
+        fetchServiceVisibilityConfig()
       ]);
 
       state.reservas = reservas;
       state.disponibilidade = disponibilidade;
       state.capacidade = capacidade;
+      state.allServices = Array.isArray(serviceConfig.allServices) ? serviceConfig.allServices : [];
+      state.enabledServices = Array.isArray(serviceConfig.enabledServices) ? serviceConfig.enabledServices : [];
       syncResendStatusMap(reservas);
       renderReservas();
       renderDisponibilidade();
       renderCapacidade();
+      renderServiceVisibilityPanel();
       renderAdminCalendar();
       updateSelectedDayNote();
+    }
+
+    async function handleSaveVisibleServices() {
+      const enabledServices = collectEnabledServicesFromPanel();
+
+      try {
+        saveServicesBtn.disabled = true;
+        setFeedback(serviceVisibilityFeedback, '', 'Salvando serviços visíveis...');
+
+        const updated = await saveServiceVisibilityConfig({ enabledServices });
+        state.allServices = Array.isArray(updated.allServices) ? updated.allServices : state.allServices;
+        state.enabledServices = Array.isArray(updated.enabledServices) ? updated.enabledServices : enabledServices;
+        renderServiceVisibilityPanel();
+        setFeedback(serviceVisibilityFeedback, 'success', 'Serviços visíveis atualizados com sucesso.');
+      } catch (error) {
+        setFeedback(serviceVisibilityFeedback, 'error', error.message || 'Falha ao salvar serviços visíveis.');
+      } finally {
+        saveServicesBtn.disabled = false;
+      }
     }
 
     async function setBlockState(bloqueado) {
@@ -1591,6 +1705,7 @@
     blockBtn.addEventListener('click', () => setBlockState(true));
     unblockBtn.addEventListener('click', () => setBlockState(false));
     addCapacityBtn.addEventListener('click', handleAddCapacity);
+    saveServicesBtn.addEventListener('click', handleSaveVisibleServices);
 
     async function init() {
       setFeedback(reservationsFeedback, '', 'Carregando dados...');
