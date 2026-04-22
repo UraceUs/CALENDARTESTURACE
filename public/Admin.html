@@ -1366,8 +1366,8 @@
             } else {
               state.resendStatusById[reserva.id] = 'nao enviado';
               applyMailStatus('nao enviado');
-              const userReason = (result && result.emailConfirmation && (result.emailConfirmation.reason || result.emailConfirmation.error)) || 'UNKNOWN';
-              const adminReason = (result && result.supportNotification && (result.supportNotification.reason || result.supportNotification.error)) || 'UNKNOWN';
+              const userReason = (result && result.emailConfirmation && (result.emailConfirmation.error || result.emailConfirmation.reason)) || 'UNKNOWN';
+              const adminReason = (result && result.supportNotification && (result.supportNotification.error || result.supportNotification.reason)) || 'UNKNOWN';
               setFeedback(
                 reservationsFeedback,
                 'error',
