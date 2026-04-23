@@ -898,9 +898,8 @@
         <h1>Painel Administrativo</h1>
       </div>
       <div class="header-tools">
-        <button type="button" id="layoutEditorToggle">Modo editor: desligado</button>
-        <button type="button" id="layoutEditorReset">Resetar layout</button>
         <a href="Calendar.html">Ir para página do cliente</a>
+        <button type="button" id="layoutEditorToggle">Modo editor: desligado</button>
       </div>
     </div>
 
@@ -1121,7 +1120,6 @@
     const reservationsFeedback = document.getElementById('reservationsFeedback');
     const reservationTableBody = document.getElementById('reservationTableBody');
     const layoutEditorToggle = document.getElementById('layoutEditorToggle');
-    const layoutEditorReset = document.getElementById('layoutEditorReset');
 
     const layoutContainers = Array.from(document.querySelectorAll('[data-layout-container]'));
     const layoutEditables = Array.from(document.querySelectorAll('.layout-editable'));
@@ -1403,11 +1401,6 @@
 
       layoutEditorToggle.addEventListener('click', () => {
         toggleLayoutEditor(!uiState.layoutEditorEnabled);
-      });
-
-      layoutEditorReset.addEventListener('click', () => {
-        resetLayoutState();
-        toggleLayoutEditor(false);
       });
 
       document.addEventListener('mouseup', () => {
