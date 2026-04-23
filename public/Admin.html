@@ -78,6 +78,30 @@
       transition: border-color 0.2s ease;
     }
 
+    .header-tools {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .header-tools button {
+      width: auto;
+      margin-top: 0;
+      padding: 8px 12px;
+      font-size: 0.8rem;
+      border-radius: 999px;
+      border: 1px solid #b8c3e7;
+      background: #f4f7ff;
+      color: var(--brand);
+      font-weight: 700;
+    }
+
+    .header-tools button:hover {
+      background: #e8eeff;
+      border-color: #9eaddc;
+    }
+
     .header a:hover {
       border-bottom-color: var(--danger);
     }
@@ -730,6 +754,57 @@
       cursor: not-allowed;
     }
 
+    .layout-editable {
+      position: relative;
+    }
+
+    .layout-drag-handle {
+      display: none;
+      position: absolute;
+      right: 8px;
+      top: 8px;
+      z-index: 20;
+      width: auto;
+      margin-top: 0;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px dashed #9eaddc;
+      background: #f4f7ff;
+      color: var(--brand);
+      font-size: 0.72rem;
+      font-weight: 700;
+      cursor: grab;
+      user-select: none;
+    }
+
+    .layout-drag-handle:active {
+      cursor: grabbing;
+    }
+
+    .layout-editor-active .layout-editable {
+      outline: 2px dashed #9eaddc;
+      outline-offset: 2px;
+      resize: both;
+      overflow: auto;
+      min-width: 260px;
+      min-height: 120px;
+    }
+
+    .layout-editor-active .layout-drag-handle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .layout-editor-active .ops-row > .layout-editable {
+      flex: 0 0 auto;
+      max-width: none;
+    }
+
+    .layout-editable.is-dragging {
+      opacity: 0.45;
+    }
+
     @media (max-width: 980px) {
       body {
         padding: 14px;
@@ -746,6 +821,10 @@
       .header {
         flex-direction: column;
         align-items: flex-start;
+      }
+
+      .header-tools {
+        width: 100%;
       }
 
       .logo-mark {
@@ -818,10 +897,14 @@
         </svg>
         <h1>Painel Administrativo</h1>
       </div>
-      <a href="Calendar.html">Ir para página do cliente</a>
+      <div class="header-tools">
+        <button type="button" id="layoutEditorToggle">Modo editor: desligado</button>
+        <button type="button" id="layoutEditorReset">Resetar layout</button>
+        <a href="Calendar.html">Ir para página do cliente</a>
+      </div>
     </div>
 
-    <section class="card calendar-card">
+    <section class="card calendar-card layout-editable" data-layout-id="calendar-card">
       <div class="calendar-head">
         <h2>Calendário de Operação</h2>
         <div class="months" id="adminMonths"></div>
@@ -841,11 +924,11 @@
       <p class="selected-day-note" id="selectedDayNote"></p>
     </section>
 
-    <div class="stack">
-      <section class="card">
+    <div class="stack" data-layout-container="main-stack">
+      <section class="card layout-editable" data-layout-id="operations-card">
         <h2>Operações do Calendário</h2>
-        <div class="ops-row">
-          <div class="ops-panel">
+        <div class="ops-row" data-layout-container="ops-row">
+          <div class="ops-panel layout-editable" data-layout-id="availability-panel">
             <h3>Disponibilidade do Calendário</h3>
             <p class="small-note">Selecione as datas para adicionar um bloqueio de disponibilidade.</p>
             <form id="availabilityForm">
@@ -876,7 +959,7 @@
             <div class="list" id="availabilityList"></div>
           </div>
 
-          <div class="ops-panel">
+          <div class="ops-panel layout-editable" data-layout-id="capacity-panel">
             <h3>Ajuste de Vagas por Dia</h3>
             <p class="small-note">Selecione um intervalo de datas, período e quantas vagas extras deseja adicionar.</p>
             <form id="capacityForm">
@@ -906,7 +989,7 @@
             <div class="list" id="capacityList"></div>
           </div>
 
-          <div class="ops-panel">
+          <div class="ops-panel layout-editable" data-layout-id="services-panel">
             <h3>Serviços Visíveis no Cliente</h3>
             <p class="small-note">Marque os serviços que devem aparecer na área de serviços da página do cliente.</p>
             <div class="service-add-row">
@@ -925,7 +1008,7 @@
         </div>
       </section>
 
-      <section class="card">
+      <section class="card layout-editable" data-layout-id="reservations-card">
         <div class="reservations-head">
           <h2>Reservas feitas</h2>
           <div id="bulkActionsBar" class="actions-box">
@@ -980,6 +1063,7 @@
   <script>
     const DEFAULT_MAX_RESERVATIONS_PER_PERIOD = 4;
     const API_REQUEST_TIMEOUT_MS = 60000;
+    const LAYOUT_EDITOR_STORAGE_KEY = 'admin_layout_editor_v1';
 
     const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
@@ -1036,10 +1120,301 @@
 
     const reservationsFeedback = document.getElementById('reservationsFeedback');
     const reservationTableBody = document.getElementById('reservationTableBody');
+    const layoutEditorToggle = document.getElementById('layoutEditorToggle');
+    const layoutEditorReset = document.getElementById('layoutEditorReset');
+
+    const layoutContainers = Array.from(document.querySelectorAll('[data-layout-container]'));
+    const layoutEditables = Array.from(document.querySelectorAll('.layout-editable'));
+
+    const defaultLayoutOrders = {};
+    layoutContainers.forEach(container => {
+      defaultLayoutOrders[container.dataset.layoutContainer] = Array.from(container.children)
+        .filter(child => child.classList.contains('layout-editable'))
+        .map(child => child.dataset.layoutId)
+        .filter(Boolean);
+    });
+
+    const uiState = {
+      layoutEditorEnabled: false,
+      draggedLayoutId: ''
+    };
+
+    let layoutPersistTimer = null;
 
     function setFeedback(target, type, message) {
       target.className = `feedback ${type}`;
       target.textContent = message || '';
+    }
+
+    function queueLayoutSave() {
+      if (layoutPersistTimer) {
+        clearTimeout(layoutPersistTimer);
+      }
+
+      layoutPersistTimer = setTimeout(() => {
+        saveLayoutState();
+      }, 120);
+    }
+
+    function getOrderedEditableChildren(container) {
+      return Array.from(container.children).filter(child => child.classList.contains('layout-editable'));
+    }
+
+    function saveLayoutState() {
+      const payload = {
+        sizes: {},
+        orders: {}
+      };
+
+      layoutEditables.forEach(item => {
+        const id = item.dataset.layoutId;
+        if (!id) {
+          return;
+        }
+
+        payload.sizes[id] = {
+          width: item.style.width || '',
+          height: item.style.height || ''
+        };
+      });
+
+      layoutContainers.forEach(container => {
+        const key = container.dataset.layoutContainer;
+        if (!key) {
+          return;
+        }
+
+        payload.orders[key] = getOrderedEditableChildren(container)
+          .map(item => item.dataset.layoutId)
+          .filter(Boolean);
+      });
+
+      try {
+        localStorage.setItem(LAYOUT_EDITOR_STORAGE_KEY, JSON.stringify(payload));
+      } catch (error) {
+        console.error('Falha ao salvar layout do editor:', error);
+      }
+    }
+
+    function applyLayoutState(payload) {
+      if (!payload || typeof payload !== 'object') {
+        return;
+      }
+
+      const savedOrders = payload.orders && typeof payload.orders === 'object' ? payload.orders : {};
+      const savedSizes = payload.sizes && typeof payload.sizes === 'object' ? payload.sizes : {};
+
+      layoutContainers.forEach(container => {
+        const key = container.dataset.layoutContainer;
+        const order = Array.isArray(savedOrders[key]) ? savedOrders[key] : [];
+        if (!order.length) {
+          return;
+        }
+
+        order.forEach(id => {
+          const item = container.querySelector(`.layout-editable[data-layout-id="${id}"]`);
+          if (item) {
+            container.appendChild(item);
+          }
+        });
+      });
+
+      layoutEditables.forEach(item => {
+        const id = item.dataset.layoutId;
+        const size = savedSizes[id];
+        if (!size || typeof size !== 'object') {
+          return;
+        }
+
+        item.style.width = typeof size.width === 'string' ? size.width : '';
+        item.style.height = typeof size.height === 'string' ? size.height : '';
+      });
+    }
+
+    function loadLayoutState() {
+      try {
+        const raw = localStorage.getItem(LAYOUT_EDITOR_STORAGE_KEY);
+        if (!raw) {
+          return;
+        }
+
+        const parsed = JSON.parse(raw);
+        applyLayoutState(parsed);
+      } catch (error) {
+        console.error('Falha ao carregar layout salvo:', error);
+      }
+    }
+
+    function resetLayoutState() {
+      layoutContainers.forEach(container => {
+        const key = container.dataset.layoutContainer;
+        const defaultOrder = defaultLayoutOrders[key] || [];
+        defaultOrder.forEach(id => {
+          const item = container.querySelector(`.layout-editable[data-layout-id="${id}"]`);
+          if (item) {
+            container.appendChild(item);
+          }
+        });
+      });
+
+      layoutEditables.forEach(item => {
+        item.style.width = '';
+        item.style.height = '';
+      });
+
+      try {
+        localStorage.removeItem(LAYOUT_EDITOR_STORAGE_KEY);
+      } catch (error) {
+        console.error('Falha ao resetar layout salvo:', error);
+      }
+    }
+
+    function createDragHandles() {
+      layoutEditables.forEach(item => {
+        if (item.querySelector('.layout-drag-handle')) {
+          return;
+        }
+
+        const handle = document.createElement('button');
+        handle.type = 'button';
+        handle.className = 'layout-drag-handle';
+        handle.textContent = 'Arrastar';
+        handle.draggable = true;
+
+        handle.addEventListener('dragstart', event => {
+          if (!uiState.layoutEditorEnabled) {
+            event.preventDefault();
+            return;
+          }
+
+          const id = item.dataset.layoutId;
+          if (!id) {
+            event.preventDefault();
+            return;
+          }
+
+          uiState.draggedLayoutId = id;
+          item.classList.add('is-dragging');
+          if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', id);
+          }
+        });
+
+        handle.addEventListener('dragend', () => {
+          item.classList.remove('is-dragging');
+          uiState.draggedLayoutId = '';
+          queueLayoutSave();
+        });
+
+        item.appendChild(handle);
+      });
+    }
+
+    function getDropReference(container, clientX, clientY) {
+      const movingId = uiState.draggedLayoutId;
+      const siblings = getOrderedEditableChildren(container)
+        .filter(item => item.dataset.layoutId !== movingId);
+
+      const isHorizontal = container.dataset.layoutContainer === 'ops-row';
+
+      for (const sibling of siblings) {
+        const rect = sibling.getBoundingClientRect();
+        if (isHorizontal) {
+          const midX = rect.left + rect.width / 2;
+          if (clientX < midX) {
+            return sibling;
+          }
+        } else {
+          const midY = rect.top + rect.height / 2;
+          if (clientY < midY) {
+            return sibling;
+          }
+        }
+      }
+
+      return null;
+    }
+
+    function bindContainerDnD() {
+      layoutContainers.forEach(container => {
+        container.addEventListener('dragover', event => {
+          if (!uiState.layoutEditorEnabled || !uiState.draggedLayoutId) {
+            return;
+          }
+
+          const draggedElement = document.querySelector(`.layout-editable[data-layout-id="${uiState.draggedLayoutId}"]`);
+          if (!draggedElement) {
+            return;
+          }
+
+          if (draggedElement.parentElement !== container) {
+            return;
+          }
+
+          event.preventDefault();
+          const reference = getDropReference(container, event.clientX, event.clientY);
+          if (reference) {
+            container.insertBefore(draggedElement, reference);
+          } else {
+            container.appendChild(draggedElement);
+          }
+        });
+
+        container.addEventListener('drop', event => {
+          if (!uiState.layoutEditorEnabled) {
+            return;
+          }
+          event.preventDefault();
+          queueLayoutSave();
+        });
+      });
+    }
+
+    function updateEditorButtons() {
+      layoutEditorToggle.textContent = uiState.layoutEditorEnabled ? 'Modo editor: ligado' : 'Modo editor: desligado';
+      layoutEditorToggle.style.background = uiState.layoutEditorEnabled ? 'var(--brand)' : '#f4f7ff';
+      layoutEditorToggle.style.borderColor = uiState.layoutEditorEnabled ? 'var(--brand)' : '#b8c3e7';
+      layoutEditorToggle.style.color = uiState.layoutEditorEnabled ? '#fff' : 'var(--brand)';
+    }
+
+    function toggleLayoutEditor(enabled) {
+      uiState.layoutEditorEnabled = Boolean(enabled);
+      document.body.classList.toggle('layout-editor-active', uiState.layoutEditorEnabled);
+
+      if (uiState.layoutEditorEnabled) {
+        layoutEditables.forEach(item => {
+          if (!item.style.width) {
+            item.style.width = `${Math.round(item.getBoundingClientRect().width)}px`;
+          }
+        });
+      } else {
+        queueLayoutSave();
+      }
+
+      updateEditorButtons();
+    }
+
+    function initLayoutEditor() {
+      createDragHandles();
+      bindContainerDnD();
+      loadLayoutState();
+      updateEditorButtons();
+
+      layoutEditorToggle.addEventListener('click', () => {
+        toggleLayoutEditor(!uiState.layoutEditorEnabled);
+      });
+
+      layoutEditorReset.addEventListener('click', () => {
+        resetLayoutState();
+        toggleLayoutEditor(false);
+      });
+
+      document.addEventListener('mouseup', () => {
+        if (uiState.layoutEditorEnabled) {
+          queueLayoutSave();
+        }
+      });
     }
 
     function deriveResendStatusFromReserva(reserva) {
@@ -2361,6 +2736,8 @@
       }
     });
     saveServicesBtn.addEventListener('click', handleSaveVisibleServices);
+
+    initLayoutEditor();
 
     async function init() {
       setFeedback(reservationsFeedback, '', 'Carregando dados...');
