@@ -506,19 +506,21 @@
     }
 
     .ops-row {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(280px, 1fr));
+      display: flex;
+      flex-wrap: wrap;
       gap: 14px;
       align-items: stretch;
     }
 
     .ops-row > .ops-panel {
-      width: 100%;
+      flex: 1 1 calc(50% - 7px);
+      max-width: calc(50% - 7px);
       min-width: 0;
     }
 
     .ops-row > .ops-panel:nth-child(3) {
-      grid-column: 1 / -1;
+      flex-basis: 100%;
+      max-width: 100%;
     }
 
     .service-visibility-list {
@@ -751,7 +753,12 @@
       }
 
       .ops-row {
+        display: grid;
         grid-template-columns: 1fr;
+      }
+
+      .ops-row > .ops-panel {
+        max-width: none;
       }
 
       .move-controls {
