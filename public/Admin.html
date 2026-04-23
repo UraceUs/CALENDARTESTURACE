@@ -719,9 +719,28 @@
         <p class="feedback" id="reservationsFeedback" aria-live="polite"></p>
         <div id="bulkActionsBar" style="display:none; align-items:center; gap:10px; margin-bottom:10px; padding:10px 14px; background:#f2f5ff; border:1px solid #c5d0ee; border-radius:8px;">
           <span id="bulkCount" style="font-weight:700; color:#1f2f6f;"></span>
-          <button type="button" id="bulkDeleteBtn" class="btn-trash" style="padding:6px 14px; font-size:0.85rem;">🗑 Excluir selecionados</button>
+          <button type="button" id="bulkMoveBtn" class="btn-primary" style="padding:6px 14px; font-size:0.85rem;">📅 Mudar Reserva</button>
           <button type="button" id="bulkResendBtn" class="btn-mail" style="padding:6px 14px; font-size:0.85rem;">✉ Reenviar e-mails</button>
+          <button type="button" id="bulkDeleteBtn" class="btn-trash" style="padding:6px 14px; font-size:0.85rem;">🗑 Excluir selecionados</button>
           <button type="button" id="bulkClearBtn" style="margin-left:auto; background:none; border:none; color:#636b79; cursor:pointer; font-size:0.85rem;">✕ Limpar seleção</button>
+        </div>
+
+        <!-- Modal Mudar Reserva -->
+        <div id="moveModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:1000; align-items:center; justify-content:center;">
+          <div style="background:#fff; border-radius:14px; padding:32px 28px; min-width:320px; max-width:440px; width:100%; box-shadow:0 8px 40px rgba(0,0,0,0.18); position:relative;">
+            <button id="moveModalClose" type="button" style="position:absolute; top:14px; right:16px; background:none; border:none; font-size:1.3rem; cursor:pointer; color:#636b79;">✕</button>
+            <h3 style="margin:0 0 20px; font-size:1.1rem; color:#1f2f6f;">Mudar Reserva</h3>
+            <p id="moveModalCount" style="margin:0 0 16px; font-size:0.9rem; color:#636b79;"></p>
+            <label style="display:block; font-weight:600; font-size:0.9rem; margin-bottom:6px;">Nova data</label>
+            <input type="date" id="moveModalDate" style="width:100%; padding:9px 12px; border:1px solid #d8dce4; border-radius:8px; font-size:1rem; margin-bottom:16px;">
+            <label style="display:block; font-weight:600; font-size:0.9rem; margin-bottom:6px;">Período</label>
+            <select id="moveModalPeriod" style="width:100%; padding:9px 12px; border:1px solid #d8dce4; border-radius:8px; font-size:1rem; margin-bottom:24px;"></select>
+            <p id="moveModalFeedback" style="margin:0 0 14px; font-size:0.85rem; min-height:18px;"></p>
+            <div style="display:flex; gap:10px; justify-content:flex-end;">
+              <button type="button" id="moveModalCancelBtn" style="padding:9px 20px; border:1px solid #d8dce4; border-radius:8px; background:#f8f9fb; font-weight:600; cursor:pointer;">Cancelar</button>
+              <button type="button" id="moveModalConfirmBtn" class="btn-primary" style="padding:9px 20px;">Confirmar</button>
+            </div>
+          </div>
         </div>
         <div style="overflow:auto;">
           <table>
@@ -733,7 +752,6 @@
                 <th>Serviço</th>
                 <th>Reserva Atual</th>
                 <th>Contato</th>
-                <th>Mover Reserva</th>
                 <th>Reenviar E-mails</th>
                 <th>Excluir</th>
               </tr>
@@ -1630,8 +1648,83 @@
     const bulkCount = document.getElementById('bulkCount');
     const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
     const bulkResendBtn = document.getElementById('bulkResendBtn');
+    const bulkMoveBtn = document.getElementById('bulkMoveBtn');
     const bulkClearBtn = document.getElementById('bulkClearBtn');
     const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+    const moveModal = document.getElementById('moveModal');
+    const moveModalDate = document.getElementById('moveModalDate');
+    const moveModalPeriod = document.getElementById('moveModalPeriod');
+    const moveModalFeedback = document.getElementById('moveModalFeedback');
+    const moveModalCount = document.getElementById('moveModalCount');
+    const moveModalConfirmBtn = document.getElementById('moveModalConfirmBtn');
+    const moveModalCancelBtn = document.getElementById('moveModalCancelBtn');
+    const moveModalClose = document.getElementById('moveModalClose');
+
+    // Populate period options in modal
+    Object.entries(bookingPeriods)
+      .filter(([key]) => key !== 'all')
+      .forEach(([value, label]) => {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = label;
+        moveModalPeriod.appendChild(option);
+      });
+
+    function openMoveModal() {
+      moveModalCount.textContent = `Mover ${selectedIds.size} reserva(s) para:`;
+      moveModalFeedback.textContent = '';
+      moveModalFeedback.style.color = '';
+      moveModalDate.value = '';
+      moveModal.style.display = 'flex';
+    }
+
+    function closeMoveModal() {
+      moveModal.style.display = 'none';
+    }
+
+    bulkMoveBtn.addEventListener('click', () => {
+      if (selectedIds.size === 0) return;
+      openMoveModal();
+    });
+
+    moveModalClose.addEventListener('click', closeMoveModal);
+    moveModalCancelBtn.addEventListener('click', closeMoveModal);
+    moveModal.addEventListener('click', (e) => { if (e.target === moveModal) closeMoveModal(); });
+
+    moveModalConfirmBtn.addEventListener('click', async () => {
+      const newDate = moveModalDate.value;
+      const newPeriod = moveModalPeriod.value;
+      if (!newDate) {
+        moveModalFeedback.style.color = 'var(--danger)';
+        moveModalFeedback.textContent = 'Selecione uma data.';
+        return;
+      }
+      moveModalConfirmBtn.disabled = true;
+      moveModalFeedback.style.color = 'var(--muted)';
+      moveModalFeedback.textContent = 'Movendo reservas...';
+      const ids = [...selectedIds];
+      let errors = 0;
+      for (const id of ids) {
+        try {
+          const updated = await moveReserva(id, { data: newDate, periodo: newPeriod });
+          const index = state.reservas.findIndex(item => item.id === id);
+          if (index !== -1) state.reservas[index] = updated;
+          selectedIds.delete(id);
+        } catch { errors++; }
+      }
+      moveModalConfirmBtn.disabled = false;
+      renderReservas();
+      renderAdminCalendar();
+      updateSelectedDayNote();
+      if (errors > 0) {
+        moveModalFeedback.style.color = 'var(--danger)';
+        moveModalFeedback.textContent = `${errors} reserva(s) nao puderam ser movidas.`;
+        setFeedback(reservationsFeedback, 'error', `${errors} reserva(s) nao puderam ser movidas.`);
+      } else {
+        closeMoveModal();
+        setFeedback(reservationsFeedback, 'success', 'Reservas movidas com sucesso.');
+      }
+    });
 
     const selectedIds = new Set();
 
@@ -1722,7 +1815,7 @@
       if (state.reservas.length === 0) {
         const row = document.createElement('tr');
         const cell = document.createElement('td');
-        cell.colSpan = 9;
+        cell.colSpan = 8;
         cell.textContent = 'Nenhuma reserva cadastrada.';
         row.appendChild(cell);
         reservationTableBody.appendChild(row);
@@ -1770,9 +1863,6 @@
 
         const contatoCell = document.createElement('td');
         contatoCell.textContent = reserva.contato || [reserva.email, reserva.telefone].filter(Boolean).join(' | ');
-
-        const moveCell = document.createElement('td');
-        moveCell.appendChild(createMoveCell(reserva));
 
         const resendCell = document.createElement('td');
         const resendWrap = document.createElement('div');
@@ -1879,7 +1969,6 @@
         row.appendChild(serviceCell);
         row.appendChild(currentCell);
         row.appendChild(contatoCell);
-        row.appendChild(moveCell);
         row.appendChild(resendCell);
         row.appendChild(deleteCell);
 
