@@ -417,10 +417,32 @@
       background: #eff4ff;
       color: var(--brand-strong);
       font-weight: 700;
+      font-size: 1.1rem;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
     }
 
     .btn-mail:hover {
       background: #e4ecff;
+    }
+
+    .btn-mail.sent {
+      background: #eafaf1;
+      border-color: #6fcf97;
+      color: #1a7f4b;
+    }
+
+    .btn-mail.sent:hover {
+      background: #d4f5e3;
+    }
+
+    .btn-mail.unsent {
+      background: #fff0f1;
+      border-color: #f5a0a5;
+      color: var(--danger);
+    }
+
+    .btn-mail.unsent:hover {
+      background: #ffe2e4;
     }
 
     .mail-action-wrap {
@@ -430,18 +452,7 @@
     }
 
     .mail-status {
-      font-size: 0.8rem;
-      font-weight: 700;
-      color: var(--muted);
-      white-space: nowrap;
-    }
-
-    .mail-status.sent {
-      color: var(--success);
-    }
-
-    .mail-status.unsent {
-      color: var(--danger);
+      display: none;
     }
 
     .small-note {
@@ -1660,23 +1671,26 @@
         resendBtn.title = 'Reenviar confirmação para cliente e admin';
         resendBtn.textContent = '✉';
 
-        const statusText = document.createElement('span');
-        statusText.className = 'mail-status';
-        statusText.textContent = state.resendStatusById[reserva.id] || 'nao enviado';
-
         function applyMailStatus(value) {
-          statusText.textContent = value;
-          statusText.classList.remove('sent', 'unsent');
           if (value === 'enviado') {
-            statusText.classList.add('sent');
-            return;
-          }
-          if (value === 'nao enviado') {
-            statusText.classList.add('unsent');
+            resendBtn.style.background = '#eafaf1';
+            resendBtn.style.borderColor = '#6fcf97';
+            resendBtn.style.color = '#1a7f4b';
+            resendBtn.title = 'Enviado — clique para reenviar';
+          } else if (value === 'enviando...') {
+            resendBtn.style.background = '#fffbe6';
+            resendBtn.style.borderColor = '#f0c040';
+            resendBtn.style.color = '#8a6500';
+            resendBtn.title = 'Enviando...';
+          } else {
+            resendBtn.style.background = '#fff0f1';
+            resendBtn.style.borderColor = '#f5a0a5';
+            resendBtn.style.color = '#e12430';
+            resendBtn.title = 'Não enviado — clique para reenviar';
           }
         }
 
-        applyMailStatus(statusText.textContent);
+        applyMailStatus(state.resendStatusById[reserva.id] || 'nao enviado');
 
         resendBtn.addEventListener('click', async () => {
           try {
@@ -1713,7 +1727,6 @@
         });
 
         resendWrap.appendChild(resendBtn);
-        resendWrap.appendChild(statusText);
         resendCell.appendChild(resendWrap);
 
         const deleteCell = document.createElement('td');

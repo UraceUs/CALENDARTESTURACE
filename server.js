@@ -185,7 +185,11 @@ function sendFile(res, filePath, contentType) {
       res.end('Arquivo não encontrado');
       return;
     }
-    res.writeHead(200, { 'Content-Type': contentType });
+    res.writeHead(200, {
+      'Content-Type': contentType,
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      'Pragma': 'no-cache'
+    });
     res.end(data);
   });
 }

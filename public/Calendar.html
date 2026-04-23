@@ -166,6 +166,14 @@
       border-color: #efc5cc;
     }
 
+    .days-grid button.past {
+      opacity: 0.35;
+      cursor: not-allowed;
+      background: #f3f4f6;
+      border-color: #e2e5ea;
+      color: var(--muted);
+    }
+
     .day-number {
       display: block;
       font-size: 0.95rem;
@@ -1170,6 +1178,10 @@
       const totalDays = getDaysInMonth(state.currentYear, state.currentMonth);
       const fragment = document.createDocumentFragment();
 
+      const now = new Date();
+      const minDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2);
+      const todayStr = `${minDate.getFullYear()}-${String(minDate.getMonth() + 1).padStart(2, '0')}-${String(minDate.getDate()).padStart(2, '0')}`;
+
       for (let i = 0; i < dayOffset; i++) {
         fragment.appendChild(document.createElement('div'));
       }
@@ -1181,11 +1193,14 @@
         const morningBlocked = isBlocked(dateValue, 'manha');
         const afternoonBlocked = isBlocked(dateValue, 'tarde');
         const isFull = isDayFullyBooked(dateValue);
+        const isPast = dateValue < todayStr;
 
         button.innerHTML = getDayButtonContent(day, dateValue);
-        button.disabled = isFull;
+        button.disabled = isFull || isPast;
 
-        if (morningBlocked || afternoonBlocked) {
+        if (isPast) {
+          button.classList.add('past');
+        } else if (morningBlocked || afternoonBlocked) {
           button.classList.add('blocked');
         }
 
@@ -1193,7 +1208,7 @@
           button.classList.add('active');
         }
 
-        if (!isFull) {
+        if (!isFull && !isPast) {
           button.addEventListener('click', () => selectDay(dateValue));
         }
         fragment.appendChild(button);
@@ -1222,7 +1237,7 @@
         return dateValue;
       }
       const [year, month, day] = dateValue.split('-');
-      return `${month}/${day}/${year}`;
+      return `${month}-${day}-${year}`;
     }
 
     function renderSelectedInfo() {
@@ -1485,6 +1500,15 @@
     }
 
     async function init() {
+      // Renderiza o calendário imediatamente, sem esperar a API
+      applyServiceVisibilityConfig({
+        allServices: DEFAULT_SERVICES,
+        enabledServices: DEFAULT_SERVICES
+      });
+      refreshCalendarUi();
+      bindEvents();
+      toggleExperienceDescriptionField();
+
       setFeedback(formFeedback, 'info', 'Conectando ao servidor...');
 
       try {
@@ -1507,16 +1531,8 @@
         refreshCalendarUi();
         setFeedback(formFeedback, 'info', '');
       } catch (error) {
-        applyServiceVisibilityConfig({
-          allServices: DEFAULT_SERVICES,
-          enabledServices: DEFAULT_SERVICES
-        });
-        refreshCalendarUi();
         setFeedback(formFeedback, 'error', toUserMessage(error, 'Erro ao carregar reservas.'));
       }
-
-      bindEvents();
-      toggleExperienceDescriptionField();
     }
 
     init();
