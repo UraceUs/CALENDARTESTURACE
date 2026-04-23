@@ -1718,7 +1718,7 @@
         row.className = 'list-item';
 
         const text = document.createElement('span');
-        text.textContent = `${item.data} - ${formatPeriod(item.periodo)}`;
+        text.textContent = `${formatDateForSummary(item.data)} - ${formatPeriod(item.periodo)}`;
 
         const btn = document.createElement('button');
         btn.textContent = 'Remover';
@@ -1766,7 +1766,7 @@
         row.className = 'list-item';
 
         const text = document.createElement('span');
-        text.textContent = `${item.data} - ${formatPeriod(item.periodo)}: ${item.vagas} vagas`;
+        text.textContent = `${formatDateForSummary(item.data)} - ${formatPeriod(item.periodo)}: ${item.vagas} vagas`;
 
         const btn = document.createElement('button');
         btn.type = 'button';
@@ -2083,7 +2083,7 @@
         serviceCell.textContent = reserva.servico;
 
         const currentCell = document.createElement('td');
-        currentCell.textContent = `${reserva.data} - ${formatPeriod(reserva.periodo)}`;
+        currentCell.textContent = `${formatDateForSummary(reserva.data)} - ${formatPeriod(reserva.periodo)}`;
 
         const contatoCell = document.createElement('td');
         contatoCell.textContent = reserva.contato || [reserva.email, reserva.telefone].filter(Boolean).join(' | ');
