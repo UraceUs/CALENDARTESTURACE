@@ -1250,6 +1250,19 @@
       return value;
     }
 
+    function formatDateForSummary(dateValue) {
+      if (typeof dateValue !== 'string') {
+        return '';
+      }
+
+      const match = dateValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!match) {
+        return dateValue;
+      }
+
+      return `${match[2]}--${match[3]}-${match[1]}`;
+    }
+
     function normalizeServiceName(value) {
       if (typeof value !== 'string') {
         return '';
@@ -1315,9 +1328,10 @@
       const afternoonCapacity = getPeriodCapacity(state.selectedDay, 'tarde');
       const morningBlocked = isPeriodBlocked(state.selectedDay, 'manha');
       const afternoonBlocked = isPeriodBlocked(state.selectedDay, 'tarde');
+      const formattedDate = formatDateForSummary(state.selectedDay);
 
       selectedDayNote.textContent =
-        `Dia ${state.selectedDay} | Manhã: ${morningCount}/${morningCapacity}${morningBlocked ? ' (bloqueado)' : ''} | ` +
+        `Dia ${formattedDate} | Manhã: ${morningCount}/${morningCapacity}${morningBlocked ? ' (bloqueado)' : ''} | ` +
         `Tarde: ${afternoonCount}/${afternoonCapacity}${afternoonBlocked ? ' (bloqueado)' : ''}`;
     }
 
