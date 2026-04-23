@@ -360,23 +360,49 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 0.9rem;
+      font-size: 0.88rem;
     }
 
     th,
     td {
-      border-bottom: 1px solid var(--line);
-      padding: 10px 8px;
+      padding: 10px 12px;
       text-align: left;
-      vertical-align: top;
+      vertical-align: middle;
+      border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+    }
+
+    thead tr {
+      background: #1e2a4a;
     }
 
     th {
-      color: #4f5866;
-      font-weight: 700;
-      font-size: 0.82rem;
+      color: #a8b4cc;
+      font-weight: 600;
+      font-size: 0.75rem;
       text-transform: uppercase;
-      letter-spacing: 0.03em;
+      letter-spacing: 0.06em;
+      border-bottom: 2px solid #141e38;
+    }
+
+    th input[type=checkbox],
+    td input[type=checkbox] {
+      width: 15px;
+      height: 15px;
+      cursor: pointer;
+      accent-color: var(--brand);
+    }
+
+    tbody tr {
+      transition: background 0.12s;
+    }
+
+    tbody tr:hover {
+      background: #f5f7ff;
+    }
+
+    tbody tr:last-child td {
+      border-bottom: none;
     }
 
     .move-controls {
