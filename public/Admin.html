@@ -899,7 +899,6 @@
       </div>
       <div class="header-tools">
         <a href="Calendar.html">Ir para página do cliente</a>
-        <button type="button" id="layoutEditorToggle">Modo editor: desligado</button>
       </div>
     </div>
 
@@ -1370,6 +1369,9 @@
     }
 
     function updateEditorButtons() {
+      if (!layoutEditorToggle) {
+        return;
+      }
       layoutEditorToggle.textContent = uiState.layoutEditorEnabled ? 'Modo editor: ligado' : 'Modo editor: desligado';
       layoutEditorToggle.style.background = uiState.layoutEditorEnabled ? 'var(--brand)' : '#f4f7ff';
       layoutEditorToggle.style.borderColor = uiState.layoutEditorEnabled ? 'var(--brand)' : '#b8c3e7';
@@ -1399,9 +1401,11 @@
       loadLayoutState();
       updateEditorButtons();
 
-      layoutEditorToggle.addEventListener('click', () => {
-        toggleLayoutEditor(!uiState.layoutEditorEnabled);
-      });
+      if (layoutEditorToggle) {
+        layoutEditorToggle.addEventListener('click', () => {
+          toggleLayoutEditor(!uiState.layoutEditorEnabled);
+        });
+      }
 
       document.addEventListener('mouseup', () => {
         if (uiState.layoutEditorEnabled) {
