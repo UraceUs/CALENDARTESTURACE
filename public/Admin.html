@@ -717,12 +717,14 @@
       <section class="card">
         <h2>Reservas (Admin)</h2>
         <p class="feedback" id="reservationsFeedback" aria-live="polite"></p>
-        <div id="bulkActionsBar" style="display:none; align-items:center; gap:10px; margin-bottom:10px; padding:10px 14px; background:#f2f5ff; border:1px solid #c5d0ee; border-radius:8px;">
-          <span id="bulkCount" style="font-weight:700; color:#1f2f6f;"></span>
-          <button type="button" id="bulkMoveBtn" class="btn-primary" style="padding:6px 14px; font-size:0.85rem;">📅 Mudar Reserva</button>
-          <button type="button" id="bulkResendBtn" class="btn-mail" style="padding:6px 14px; font-size:0.85rem;">✉ Reenviar e-mails</button>
-          <button type="button" id="bulkDeleteBtn" class="btn-trash" style="padding:6px 14px; font-size:0.85rem;">🗑 Excluir selecionados</button>
-          <button type="button" id="bulkClearBtn" style="margin-left:auto; background:none; border:none; color:#636b79; cursor:pointer; font-size:0.85rem;">✕ Limpar seleção</button>
+        <div id="bulkActionsBar" style="display:flex; align-items:center; gap:10px; margin-bottom:14px; padding:12px 16px; background:#f2f5ff; border:1px solid #c5d0ee; border-radius:10px; flex-wrap:wrap;">
+          <span id="bulkCount" style="font-size:0.88rem; font-weight:600; color:var(--muted); min-width:110px;">0 selecionado(s)</span>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-left:auto;">
+            <button type="button" id="bulkMoveBtn" class="btn-primary" style="display:flex; align-items:center; gap:6px; padding:8px 16px; font-size:0.88rem; border-radius:8px; border:none; cursor:pointer;">📅 Mudar Reserva</button>
+            <button type="button" id="bulkResendBtn" style="display:flex; align-items:center; gap:6px; padding:8px 16px; font-size:0.88rem; font-weight:600; border-radius:8px; border:1px solid #b9c7ee; background:#eff4ff; color:var(--brand); cursor:pointer;">✉ Reenviar E-mails</button>
+            <button type="button" id="bulkDeleteBtn" class="btn-danger" style="display:flex; align-items:center; gap:6px; padding:8px 16px; font-size:0.88rem; border-radius:8px; border:none; cursor:pointer;">🗑 Excluir</button>
+            <button type="button" id="bulkClearBtn" style="display:flex; align-items:center; gap:4px; padding:8px 12px; font-size:0.88rem; font-weight:600; border-radius:8px; border:1px solid var(--line); background:#fff; color:var(--muted); cursor:pointer;">✕ Limpar</button>
+          </div>
         </div>
 
         <!-- Modal Mudar Reserva -->
@@ -1729,12 +1731,16 @@
     const selectedIds = new Set();
 
     function updateBulkBar() {
-      if (selectedIds.size > 0) {
-        bulkActionsBar.style.display = 'flex';
-        bulkCount.textContent = `${selectedIds.size} selecionado(s)`;
-      } else {
-        bulkActionsBar.style.display = 'none';
-      }
+      bulkCount.textContent = `${selectedIds.size} selecionado(s)`;
+      const hasSelection = selectedIds.size > 0;
+      bulkMoveBtn.disabled = !hasSelection;
+      bulkResendBtn.disabled = !hasSelection;
+      bulkDeleteBtn.disabled = !hasSelection;
+      bulkClearBtn.disabled = !hasSelection;
+      bulkMoveBtn.style.opacity = hasSelection ? '1' : '0.45';
+      bulkResendBtn.style.opacity = hasSelection ? '1' : '0.45';
+      bulkDeleteBtn.style.opacity = hasSelection ? '1' : '0.45';
+      bulkClearBtn.style.opacity = hasSelection ? '1' : '0.45';
       const allCheckboxes = reservationTableBody.querySelectorAll('input[type=checkbox]');
       selectAllCheckbox.checked = allCheckboxes.length > 0 && [...allCheckboxes].every(cb => cb.checked);
       selectAllCheckbox.indeterminate = selectedIds.size > 0 && !selectAllCheckbox.checked;
