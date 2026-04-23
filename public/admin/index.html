@@ -3,11 +3,68 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Admin Redirect</title>
+  <title>URACE | Admin</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;800&display=swap');
+
+    :root {
+      --bg: #ededf0;
+      --card: #ffffff;
+      --line: #d8dce4;
+      --brand: #1f2f6f;
+      --brand-strong: #162353;
+      --text: #181b25;
+      --muted: #636b79;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      font-family: 'Sora', 'Trebuchet MS', sans-serif;
+      color: var(--text);
+      background:
+        linear-gradient(135deg, rgba(225, 36, 48, 0.06), transparent 26%),
+        linear-gradient(315deg, rgba(31, 47, 111, 0.06), transparent 32%),
+        var(--bg);
+    }
+
+    .redirect-card {
+      width: 100%;
+      max-width: 520px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--card);
+      padding: 22px;
+      box-shadow: 0 14px 30px rgba(20, 26, 49, 0.06);
+      text-align: center;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 1.08rem;
+      color: var(--brand-strong);
+      font-weight: 800;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+      font-weight: 600;
+    }
+  </style>
   <meta http-equiv="refresh" content="0;url=../Admin.html" />
 </head>
 <body>
-  <p>Redirecionando para o painel admin...</p>
+  <div class="redirect-card">
+    <h1>URACE Admin</h1>
+    <p>Redirecionando para o painel administrativo...</p>
+  </div>
   <script>
     window.location.replace('../Admin.html');
   </script>
