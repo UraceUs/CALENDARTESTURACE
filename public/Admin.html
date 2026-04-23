@@ -717,10 +717,17 @@
       <section class="card">
         <h2>Reservas (Admin)</h2>
         <p class="feedback" id="reservationsFeedback" aria-live="polite"></p>
+        <div id="bulkActionsBar" style="display:none; align-items:center; gap:10px; margin-bottom:10px; padding:10px 14px; background:#f2f5ff; border:1px solid #c5d0ee; border-radius:8px;">
+          <span id="bulkCount" style="font-weight:700; color:#1f2f6f;"></span>
+          <button type="button" id="bulkDeleteBtn" class="btn-trash" style="padding:6px 14px; font-size:0.85rem;">🗑 Excluir selecionados</button>
+          <button type="button" id="bulkResendBtn" class="btn-mail" style="padding:6px 14px; font-size:0.85rem;">✉ Reenviar e-mails</button>
+          <button type="button" id="bulkClearBtn" style="margin-left:auto; background:none; border:none; color:#636b79; cursor:pointer; font-size:0.85rem;">✕ Limpar seleção</button>
+        </div>
         <div style="overflow:auto;">
           <table>
             <thead>
               <tr>
+                <th style="width:36px;"><input type="checkbox" id="selectAllCheckbox" title="Selecionar todos"></th>
                 <th>Piloto</th>
                 <th>Responsável</th>
                 <th>Serviço</th>
@@ -1619,16 +1626,107 @@
       return wrapper;
     }
 
+    const bulkActionsBar = document.getElementById('bulkActionsBar');
+    const bulkCount = document.getElementById('bulkCount');
+    const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+    const bulkResendBtn = document.getElementById('bulkResendBtn');
+    const bulkClearBtn = document.getElementById('bulkClearBtn');
+    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+
+    const selectedIds = new Set();
+
+    function updateBulkBar() {
+      if (selectedIds.size > 0) {
+        bulkActionsBar.style.display = 'flex';
+        bulkCount.textContent = `${selectedIds.size} selecionado(s)`;
+      } else {
+        bulkActionsBar.style.display = 'none';
+      }
+      const allCheckboxes = reservationTableBody.querySelectorAll('input[type=checkbox]');
+      selectAllCheckbox.checked = allCheckboxes.length > 0 && [...allCheckboxes].every(cb => cb.checked);
+      selectAllCheckbox.indeterminate = selectedIds.size > 0 && !selectAllCheckbox.checked;
+    }
+
+    selectAllCheckbox.addEventListener('change', () => {
+      const allCheckboxes = reservationTableBody.querySelectorAll('input[type=checkbox]');
+      allCheckboxes.forEach(cb => {
+        cb.checked = selectAllCheckbox.checked;
+        if (selectAllCheckbox.checked) {
+          selectedIds.add(cb.dataset.id);
+        } else {
+          selectedIds.delete(cb.dataset.id);
+        }
+      });
+      updateBulkBar();
+    });
+
+    bulkClearBtn.addEventListener('click', () => {
+      selectedIds.clear();
+      reservationTableBody.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = false);
+      updateBulkBar();
+    });
+
+    bulkDeleteBtn.addEventListener('click', async () => {
+      if (selectedIds.size === 0) return;
+      const confirmed = window.confirm(`Excluir ${selectedIds.size} reserva(s) selecionada(s)?`);
+      if (!confirmed) return;
+      bulkDeleteBtn.disabled = true;
+      const ids = [...selectedIds];
+      let errors = 0;
+      for (const id of ids) {
+        try {
+          await deleteReserva(id);
+          state.reservas = state.reservas.filter(r => r.id !== id);
+          delete state.resendStatusById[id];
+          selectedIds.delete(id);
+        } catch { errors++; }
+      }
+      bulkDeleteBtn.disabled = false;
+      renderReservas();
+      renderAdminCalendar();
+      updateSelectedDayNote();
+      if (errors > 0) {
+        setFeedback(reservationsFeedback, 'error', `${errors} reserva(s) nao puderam ser excluidas.`);
+      } else {
+        setFeedback(reservationsFeedback, 'success', 'Reservas excluidas com sucesso.');
+      }
+    });
+
+    bulkResendBtn.addEventListener('click', async () => {
+      if (selectedIds.size === 0) return;
+      bulkResendBtn.disabled = true;
+      setFeedback(reservationsFeedback, 'info', `Reenviando e-mails para ${selectedIds.size} reserva(s)...`);
+      const ids = [...selectedIds];
+      let errors = 0;
+      for (const id of ids) {
+        try {
+          const result = await resendReservaConfirmation(id);
+          const ok = Boolean(result && result.emailConfirmation && result.emailConfirmation.sent) &&
+                     Boolean(result && result.supportNotification && result.supportNotification.sent);
+          state.resendStatusById[id] = ok ? 'enviado' : 'nao enviado';
+          if (!ok) errors++;
+        } catch { state.resendStatusById[id] = 'nao enviado'; errors++; }
+      }
+      bulkResendBtn.disabled = false;
+      renderReservas();
+      if (errors > 0) {
+        setFeedback(reservationsFeedback, 'error', `${errors} e-mail(s) falharam.`);
+      } else {
+        setFeedback(reservationsFeedback, 'success', 'E-mails reenviados com sucesso.');
+      }
+    });
+
     function renderReservas() {
       reservationTableBody.innerHTML = '';
 
       if (state.reservas.length === 0) {
         const row = document.createElement('tr');
         const cell = document.createElement('td');
-        cell.colSpan = 8;
+        cell.colSpan = 9;
         cell.textContent = 'Nenhuma reserva cadastrada.';
         row.appendChild(cell);
         reservationTableBody.appendChild(row);
+        updateBulkBar();
         return;
       }
 
@@ -1642,6 +1740,21 @@
 
       sorted.forEach(reserva => {
         const row = document.createElement('tr');
+
+        const checkCell = document.createElement('td');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.dataset.id = reserva.id;
+        checkbox.checked = selectedIds.has(reserva.id);
+        checkbox.addEventListener('change', () => {
+          if (checkbox.checked) {
+            selectedIds.add(reserva.id);
+          } else {
+            selectedIds.delete(reserva.id);
+          }
+          updateBulkBar();
+        });
+        checkCell.appendChild(checkbox);
 
         const pilotoCell = document.createElement('td');
         pilotoCell.textContent = reserva.nomePiloto || reserva.nome || '';
@@ -1760,6 +1873,7 @@
 
         deleteCell.appendChild(deleteBtn);
 
+        row.appendChild(checkCell);
         row.appendChild(pilotoCell);
         row.appendChild(responsavelCell);
         row.appendChild(serviceCell);
@@ -1771,6 +1885,8 @@
 
         reservationTableBody.appendChild(row);
       });
+
+      updateBulkBar();
     }
 
     async function refreshAll() {
