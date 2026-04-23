@@ -1396,11 +1396,21 @@
         }
 
         button.addEventListener('click', () => {
-          state.selectedDay = date;
-          availabilityStartDate.value = date;
-          availabilityEndDate.value = date;
-          capacityStartDate.value = date;
-          capacityEndDate.value = date;
+          const isSameDay = state.selectedDay === date;
+          state.selectedDay = isSameDay ? '' : date;
+
+          if (state.selectedDay) {
+            availabilityStartDate.value = date;
+            availabilityEndDate.value = date;
+            capacityStartDate.value = date;
+            capacityEndDate.value = date;
+          } else {
+            availabilityStartDate.value = '';
+            availabilityEndDate.value = '';
+            capacityStartDate.value = '';
+            capacityEndDate.value = '';
+          }
+
           renderAdminCalendar();
           updateSelectedDayNote();
         });
