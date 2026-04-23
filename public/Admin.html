@@ -503,13 +503,22 @@
       margin: 2px 0 8px;
       font-size: 0.82rem;
       color: var(--muted);
-      min-height: 2.4em;
     }
 
     .ops-row {
       display: grid;
       grid-template-columns: repeat(2, minmax(280px, 1fr));
       gap: 14px;
+      align-items: stretch;
+    }
+
+    .ops-row > .ops-panel {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .ops-row > .ops-panel:nth-child(3) {
+      grid-column: 1 / -1;
     }
 
     .service-visibility-list {
