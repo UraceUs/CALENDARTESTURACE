@@ -746,6 +746,24 @@
       white-space: nowrap;
     }
 
+    .actions-search {
+      width: 240px;
+      min-width: 180px;
+      margin-top: 0;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid #b8c3e7;
+      background: #f9fbff;
+      color: var(--text);
+      font-size: 0.82rem;
+      font-weight: 600;
+    }
+
+    .actions-search::placeholder {
+      color: #8a93a8;
+      font-weight: 600;
+    }
+
     .actions-btn {
       width: auto;
       margin-top: 0;
@@ -906,6 +924,11 @@
       .actions-btn {
         flex: 1 1 auto;
       }
+
+      .actions-search {
+        width: 100%;
+        min-width: 0;
+      }
     }
 
     @media (max-width: 700px) {
@@ -1064,6 +1087,7 @@
           <h2>Reservas feitas</h2>
           <div id="bulkActionsBar" class="actions-box">
             <span id="bulkCount" class="actions-count">0 selecionado(s)</span>
+            <input type="search" id="bulkSearchInput" class="actions-search" placeholder="Pesquisar: piloto, responsavel, servico, data ou contato" aria-label="Pesquisar reservas" />
             <button type="button" id="bulkClearBtn" class="actions-btn ghost">✕ Limpar</button>
             <button type="button" id="bulkResendBtn" class="actions-btn">✉ Reenviar E-mails</button>
             <button type="button" id="bulkMoveBtn" class="actions-btn primary">📅 Mudar Reserva</button>
@@ -1135,6 +1159,7 @@
       currentMonth: new Date().getMonth(),
       currentYear: new Date().getFullYear(),
       selectedDay: '',
+      searchQuery: '',
       apiBase: '',
       resendStatusById: {},
       allServices: [],
@@ -2312,6 +2337,7 @@
     const bulkResendBtn = document.getElementById('bulkResendBtn');
     const bulkMoveBtn = document.getElementById('bulkMoveBtn');
     const bulkClearBtn = document.getElementById('bulkClearBtn');
+    const bulkSearchInput = document.getElementById('bulkSearchInput');
     const selectAllCheckbox = document.getElementById('selectAllCheckbox');
     const moveModal = document.getElementById('moveModal');
     const moveModalDate = document.getElementById('moveModalDate');
@@ -2390,6 +2416,14 @@
 
     const selectedIds = new Set();
 
+    function normalizeSearchText(value) {
+      return String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
+    }
+
     function updateBulkBar() {
       bulkCount.textContent = `${selectedIds.size} selecionado(s)`;
       const hasSelection = selectedIds.size > 0;
@@ -2433,6 +2467,11 @@
         }
       });
       updateBulkBar();
+    });
+
+    bulkSearchInput.addEventListener('input', () => {
+      state.searchQuery = bulkSearchInput.value || '';
+      renderReservas();
     });
 
     bulkDeleteBtn.addEventListener('click', async () => {
@@ -2507,7 +2546,31 @@
         return String(a.periodo).localeCompare(String(b.periodo));
       });
 
-      sorted.forEach(reserva => {
+      const normalizedQuery = normalizeSearchText(state.searchQuery);
+      const filtered = normalizedQuery
+        ? sorted.filter(reserva => {
+          const piloto = reserva.nomePiloto || reserva.nome || '';
+          const responsavel = reserva.responsavelPiloto || reserva.nomeResponsavel || reserva.responsavel || '';
+          const servico = reserva.servico || '';
+          const reservaAtual = `${formatDateForSummary(reserva.data)} - ${formatPeriod(reserva.periodo)}`;
+          const contato = reserva.contato || [reserva.email, reserva.telefone].filter(Boolean).join(' | ');
+          const haystack = normalizeSearchText([piloto, responsavel, servico, reservaAtual, contato].join(' '));
+          return haystack.includes(normalizedQuery);
+        })
+        : sorted;
+
+      if (filtered.length === 0) {
+        const row = document.createElement('tr');
+        const cell = document.createElement('td');
+        cell.colSpan = 8;
+        cell.textContent = 'Nenhuma reserva encontrada para esta pesquisa.';
+        row.appendChild(cell);
+        reservationTableBody.appendChild(row);
+        updateBulkBar();
+        return;
+      }
+
+      filtered.forEach(reserva => {
         const row = document.createElement('tr');
         row.classList.toggle('is-selected', selectedIds.has(reserva.id));
 
