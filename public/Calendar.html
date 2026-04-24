@@ -234,6 +234,14 @@
       align-self: start;
     }
 
+    .cards-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 22px;
+      margin-top: 22px;
+      align-items: start;
+    }
+
     .booking-card {
       background: linear-gradient(180deg, #f6f9ff 0%, #edf3ff 100%);
       border: 1px solid #aab8de;
@@ -634,6 +642,10 @@
         grid-template-columns: 1fr;
       }
 
+      .cards-row {
+        grid-template-columns: 1fr;
+      }
+
       .booking-panel {
         padding: 14px;
       }
@@ -732,24 +744,23 @@
       <div class="months" id="months"></div>
     </div>
 
-    <div class="layout">
-      <div class="calendar-panel">
-        <div class="week-days">
-          <div>SEG</div>
-          <div>TER</div>
-          <div>QUA</div>
-          <div>QUI</div>
-          <div>SEX</div>
-          <div>SÁB</div>
-          <div>DOM</div>
+    <form id="reservaForm">
+      <div class="layout">
+        <div class="calendar-panel">
+          <div class="week-days">
+            <div>SEG</div>
+            <div>TER</div>
+            <div>QUA</div>
+            <div>QUI</div>
+            <div>SEX</div>
+            <div>SÁB</div>
+            <div>DOM</div>
+          </div>
+          <div class="days-grid" id="daysGrid"></div>
+          <div class="selected-date" id="selectedDate">Clique em um dia para escolher a data*</div>
         </div>
-        <div class="days-grid" id="daysGrid"></div>
-        <div class="selected-date" id="selectedDate">Clique em um dia para escolher a data*</div>
-      </div>
 
-      <div class="booking-panel">
-        <form id="reservaForm">
-
+        <div class="booking-panel">
           <!-- CARD 1: Período + Serviço -->
           <div class="booking-card">
             <h3 class="booking-card-title">Selecione a sessão</h3>
@@ -777,56 +788,58 @@
             <input type="hidden" id="servico" name="servico" required />
             <input type="hidden" id="data" required />
           </div>
-
-          <!-- CARD 2: Informações de contato -->
-          <div class="booking-card">
-            <h3 class="booking-card-title">Informações de contato</h3>
-            <label>Nome do piloto
-              <input type="text" id="nomePiloto" required />
-            </label>
-            <label>Nome do responsável
-              <input type="text" id="responsavelPiloto" required />
-            </label>
-            <label>E-mail
-              <input type="email" id="email" required maxlength="254" autocapitalize="off" autocomplete="email" inputmode="email" pattern="[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}" title="Informe um e-mail valido (ex.: nome@dominio.com)" />
-            </label>
-            <label>Telefone
-              <input type="tel" id="telefone" required />
-            </label>
-          </div>
-
-          <!-- CARD 3: Dados do driver -->
-          <div class="booking-card">
-            <h3 class="booking-card-title">Dados do driver</h3>
-            <label>Idade do driver
-              <input type="number" id="age" min="1" max="120" required />
-            </label>
-            <label>Altura do driver
-              <input type="text" id="height" placeholder="Ex.: 1.72m" required />
-            </label>
-            <label>Peso do driver
-              <input type="text" id="weight" placeholder="Ex.: 68kg" required />
-            </label>
-            <label>Cintura do driver
-              <input type="text" id="waist" placeholder="Ex.: 78cm" required />
-            </label>
-            <label>Experiência no kart
-              <select id="kartingExperience" required>
-                <option value="">Selecione</option>
-                <option value="Sim">Sim</option>
-                <option value="Nao">Nao</option>
-              </select>
-            </label>
-            <label id="experienceDescriptionField" style="display: none;">Descreva sua experiência
-              <textarea id="experienceDescription" rows="3" maxlength="500" placeholder="Conte brevemente sua experiencia"></textarea>
-            </label>
-            <button type="submit">Enviar reserva</button>
-            <p class="feedback info" id="formFeedback" aria-live="polite"></p>
-          </div>
-
-        </form>
+        </div>
       </div>
-    </div>
+
+      <!-- LINHA INFERIOR: Card 2 + Card 3 lado a lado -->
+      <div class="cards-row">
+        <!-- CARD 2: Informações de contato -->
+        <div class="booking-card">
+          <h3 class="booking-card-title">Informações de contato</h3>
+          <label>Nome do piloto
+            <input type="text" id="nomePiloto" required />
+          </label>
+          <label>Nome do responsável
+            <input type="text" id="responsavelPiloto" required />
+          </label>
+          <label>E-mail
+            <input type="email" id="email" required maxlength="254" autocapitalize="off" autocomplete="email" inputmode="email" pattern="[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}" title="Informe um e-mail valido (ex.: nome@dominio.com)" />
+          </label>
+          <label>Telefone
+            <input type="tel" id="telefone" required />
+          </label>
+        </div>
+
+        <!-- CARD 3: Dados do driver -->
+        <div class="booking-card">
+          <h3 class="booking-card-title">Dados do driver</h3>
+          <label>Idade do driver
+            <input type="number" id="age" min="1" max="120" required />
+          </label>
+          <label>Altura do driver
+            <input type="text" id="height" placeholder="Ex.: 1.72m" required />
+          </label>
+          <label>Peso do driver
+            <input type="text" id="weight" placeholder="Ex.: 68kg" required />
+          </label>
+          <label>Cintura do driver
+            <input type="text" id="waist" placeholder="Ex.: 78cm" required />
+          </label>
+          <label>Experiência no kart
+            <select id="kartingExperience" required>
+              <option value="">Selecione</option>
+              <option value="Sim">Sim</option>
+              <option value="Nao">Nao</option>
+            </select>
+          </label>
+          <label id="experienceDescriptionField" style="display: none;">Descreva sua experiência
+            <textarea id="experienceDescription" rows="3" maxlength="500" placeholder="Conte brevemente sua experiencia"></textarea>
+          </label>
+          <button type="submit">Enviar reserva</button>
+          <p class="feedback info" id="formFeedback" aria-live="polite"></p>
+        </div>
+      </div>
+    </form>
   </div>
 
   <script src="./runtime-config.js"></script>
