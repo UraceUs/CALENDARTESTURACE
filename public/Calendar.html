@@ -228,15 +228,32 @@
     }
 
     .booking-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      align-self: start;
+    }
+
+    .booking-card {
       background: linear-gradient(180deg, #f6f9ff 0%, #edf3ff 100%);
       border: 1px solid #aab8de;
       border-radius: 14px;
       padding: 18px;
       box-shadow: 0 18px 34px rgba(2, 8, 26, 0.26);
-      align-self: start;
     }
 
-    .booking-panel .form-panel {
+    .booking-card-title {
+      font-size: 0.82rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #1f2f6f;
+      margin: 0 0 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #c4d0f0;
+    }
+
+    .booking-panel .booking-card {
       margin-top: 0;
       background: linear-gradient(180deg, #f9fbff 0%, #f1f5ff 100%);
       border-color: #b4c2e6;
@@ -391,14 +408,14 @@
       background: #fafbff;
     }
 
-    .form-panel label {
+    .booking-card label {
       display: block;
       font-size: 0.95rem;
       margin-bottom: 10px;
       font-weight: 700;
     }
 
-    .form-panel .section-label {
+    .booking-card .section-label {
       margin-top: 12px;
       margin-bottom: 8px;
     }
@@ -511,10 +528,10 @@
       color: #4a5f95;
     }
 
-    .form-panel input,
-    .form-panel select,
-    .form-panel textarea,
-    .form-panel button[type="submit"] {
+    .booking-card input,
+    .booking-card select,
+    .booking-card textarea,
+    .booking-card button[type="submit"] {
       width: 100%;
       padding: 12px 14px;
       border-radius: 10px;
@@ -526,10 +543,10 @@
       transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
     }
 
-    .form-panel input:focus-visible,
-    .form-panel select:focus-visible,
-    .form-panel textarea:focus-visible,
-    .form-panel button:focus-visible,
+    .booking-card input:focus-visible,
+    .booking-card select:focus-visible,
+    .booking-card textarea:focus-visible,
+    .booking-card button:focus-visible,
     .months button:focus-visible,
     .days-grid button:focus-visible,
     .service-card:focus-visible,
@@ -539,7 +556,7 @@
       box-shadow: 0 0 0 3px rgba(31, 47, 111, 0.18);
     }
 
-    .form-panel button[type="submit"] {
+    .booking-card button[type="submit"] {
       background: var(--accent);
       color: white;
       border: none;
@@ -550,12 +567,12 @@
       letter-spacing: 0.01em;
     }
 
-    .form-panel button[type="submit"]:hover {
+    .booking-card button[type="submit"]:hover {
       background: var(--accent-strong);
       transform: translateY(-1px);
     }
 
-    .form-panel button[type="submit"]:disabled {
+    .booking-card button[type="submit"]:disabled {
       opacity: 0.6;
       cursor: not-allowed;
     }
@@ -600,7 +617,7 @@
       }
 
       .calendar-panel,
-      .form-panel {
+      .booking-card {
         padding: 12px;
       }
 
@@ -731,8 +748,11 @@
       </div>
 
       <div class="booking-panel">
-        <div class="form-panel">
-          <form id="reservaForm">
+        <form id="reservaForm">
+
+          <!-- CARD 1: Período + Serviço -->
+          <div class="booking-card">
+            <h3 class="booking-card-title">Selecione a sessão</h3>
             <div id="periodoField">
               <label class="section-label">Período</label>
               <div class="period-options" id="periodOptions">
@@ -756,7 +776,11 @@
             <p class="feedback info" id="serviceHint" aria-live="polite"></p>
             <input type="hidden" id="servico" name="servico" required />
             <input type="hidden" id="data" required />
+          </div>
 
+          <!-- CARD 2: Informações de contato -->
+          <div class="booking-card">
+            <h3 class="booking-card-title">Informações de contato</h3>
             <label>Nome do piloto
               <input type="text" id="nomePiloto" required />
             </label>
@@ -769,6 +793,11 @@
             <label>Telefone
               <input type="tel" id="telefone" required />
             </label>
+          </div>
+
+          <!-- CARD 3: Dados do driver -->
+          <div class="booking-card">
+            <h3 class="booking-card-title">Dados do driver</h3>
             <label>Idade do driver
               <input type="number" id="age" min="1" max="120" required />
             </label>
@@ -793,8 +822,9 @@
             </label>
             <button type="submit">Enviar reserva</button>
             <p class="feedback info" id="formFeedback" aria-live="polite"></p>
-          </form>
-        </div>
+          </div>
+
+        </form>
       </div>
     </div>
   </div>
