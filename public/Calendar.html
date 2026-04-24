@@ -135,46 +135,15 @@
       border: 1px solid rgba(255, 255, 255, 0.28);
       box-shadow: 0 14px 34px rgba(0, 0, 0, 0.42);
       position: relative;
+      min-height: 250px;
     }
 
-    .hero-media img {
+    .hero-media iframe {
       width: 100%;
       height: 100%;
       min-height: 250px;
-      object-fit: cover;
       display: block;
-    }
-
-    .hero-play {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 62px;
-      height: 62px;
-      border-radius: 50%;
-      border: none;
-      background: var(--danger);
-      color: #fff;
-      font-size: 1.35rem;
-      font-weight: 700;
-    }
-
-    .hero-booking {
-      border-radius: 14px;
-      border: 1px solid rgba(255, 255, 255, 0.32);
-      background: rgba(255, 255, 255, 0.14);
-      backdrop-filter: blur(4px);
-      padding: 10px;
-      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.35);
-    }
-
-    .hero-booking .form-panel {
-      margin-top: 0;
-      max-height: 620px;
-      overflow: auto;
-      border-color: #c2cde6;
-      background: rgba(245, 248, 255, 0.98);
+      border: 0;
     }
 
     .page {
@@ -243,7 +212,7 @@
 
     .layout {
       display: grid;
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
       gap: 18px;
     }
 
@@ -253,6 +222,20 @@
       border-radius: 14px;
       padding: 18px;
       box-shadow: 0 18px 34px rgba(2, 8, 26, 0.22);
+    }
+
+    .booking-panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+      box-shadow: 0 18px 34px rgba(2, 8, 26, 0.22);
+      align-self: start;
+    }
+
+    .booking-panel .form-panel {
+      margin-top: 0;
+      background: #fafbff;
     }
 
     .week-days {
@@ -600,10 +583,6 @@
         max-width: 100%;
       }
 
-      .hero-booking .form-panel {
-        max-height: none;
-      }
-
       .site-topbar {
         padding: 0 14px;
       }
@@ -706,71 +685,14 @@
       </p>
       <a class="hero-cta" href="#reservaForm">Quero reservar meu evento corporativo</a>
     </div>
-    <div class="hero-booking">
-      <div class="form-panel">
-        <form id="reservaForm">
-          <div id="periodoField">
-            <label class="section-label">Período</label>
-            <div class="period-options" id="periodOptions">
-              <button type="button" class="period-card" data-period="manha">
-                <span class="period-icon">🌅</span>
-                <span class="period-name">Manhã</span>
-                <span class="period-count"></span>
-              </button>
-              <button type="button" class="period-card" data-period="tarde">
-                <span class="period-icon">🌇</span>
-                <span class="period-name">Tarde</span>
-                <span class="period-count"></span>
-              </button>
-            </div>
-            <input type="hidden" id="horario" name="horario" required />
-          </div>
-          <p class="feedback info" id="periodHint" aria-live="polite"></p>
-
-          <label class="section-label">Serviço</label>
-          <div class="service-options" id="serviceOptions"></div>
-          <p class="feedback info" id="serviceHint" aria-live="polite"></p>
-          <input type="hidden" id="servico" name="servico" required />
-          <input type="hidden" id="data" required />
-
-          <label>Nome do piloto
-            <input type="text" id="nomePiloto" required />
-          </label>
-          <label>Nome do responsável
-            <input type="text" id="responsavelPiloto" required />
-          </label>
-          <label>E-mail
-            <input type="email" id="email" required maxlength="254" autocapitalize="off" autocomplete="email" inputmode="email" pattern="[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}" title="Informe um e-mail valido (ex.: nome@dominio.com)" />
-          </label>
-          <label>Telefone
-            <input type="tel" id="telefone" required />
-          </label>
-          <label>Idade do driver
-            <input type="number" id="age" min="1" max="120" required />
-          </label>
-          <label>Altura do driver
-            <input type="text" id="height" placeholder="Ex.: 1.72m" required />
-          </label>
-          <label>Peso do driver
-            <input type="text" id="weight" placeholder="Ex.: 68kg" required />
-          </label>
-          <label>Cintura do driver
-            <input type="text" id="waist" placeholder="Ex.: 78cm" required />
-          </label>
-          <label>Experiência no kart
-            <select id="kartingExperience" required>
-              <option value="">Selecione</option>
-              <option value="Sim">Sim</option>
-              <option value="Nao">Nao</option>
-            </select>
-          </label>
-          <label id="experienceDescriptionField" style="display: none;">Descreva sua experiência
-            <textarea id="experienceDescription" rows="3" maxlength="500" placeholder="Conte brevemente sua experiencia"></textarea>
-          </label>
-          <button type="submit">Enviar reserva</button>
-          <p class="feedback info" id="formFeedback" aria-live="polite"></p>
-        </form>
-      </div>
+    <div class="hero-media" aria-hidden="true">
+      <iframe
+        src="https://www.youtube.com/embed/t2cYtUGzvY0?start=4&rel=0"
+        title="Video institucional URace"
+        loading="lazy"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowfullscreen>
+      </iframe>
     </div>
   </section>
 
@@ -800,6 +722,73 @@
         </div>
         <div class="days-grid" id="daysGrid"></div>
         <div class="selected-date" id="selectedDate">Clique em um dia para escolher a data*</div>
+      </div>
+
+      <div class="booking-panel">
+        <div class="form-panel">
+          <form id="reservaForm">
+            <div id="periodoField">
+              <label class="section-label">Período</label>
+              <div class="period-options" id="periodOptions">
+                <button type="button" class="period-card" data-period="manha">
+                  <span class="period-icon">🌅</span>
+                  <span class="period-name">Manhã</span>
+                  <span class="period-count"></span>
+                </button>
+                <button type="button" class="period-card" data-period="tarde">
+                  <span class="period-icon">🌇</span>
+                  <span class="period-name">Tarde</span>
+                  <span class="period-count"></span>
+                </button>
+              </div>
+              <input type="hidden" id="horario" name="horario" required />
+            </div>
+            <p class="feedback info" id="periodHint" aria-live="polite"></p>
+
+            <label class="section-label">Serviço</label>
+            <div class="service-options" id="serviceOptions"></div>
+            <p class="feedback info" id="serviceHint" aria-live="polite"></p>
+            <input type="hidden" id="servico" name="servico" required />
+            <input type="hidden" id="data" required />
+
+            <label>Nome do piloto
+              <input type="text" id="nomePiloto" required />
+            </label>
+            <label>Nome do responsável
+              <input type="text" id="responsavelPiloto" required />
+            </label>
+            <label>E-mail
+              <input type="email" id="email" required maxlength="254" autocapitalize="off" autocomplete="email" inputmode="email" pattern="[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}" title="Informe um e-mail valido (ex.: nome@dominio.com)" />
+            </label>
+            <label>Telefone
+              <input type="tel" id="telefone" required />
+            </label>
+            <label>Idade do driver
+              <input type="number" id="age" min="1" max="120" required />
+            </label>
+            <label>Altura do driver
+              <input type="text" id="height" placeholder="Ex.: 1.72m" required />
+            </label>
+            <label>Peso do driver
+              <input type="text" id="weight" placeholder="Ex.: 68kg" required />
+            </label>
+            <label>Cintura do driver
+              <input type="text" id="waist" placeholder="Ex.: 78cm" required />
+            </label>
+            <label>Experiência no kart
+              <select id="kartingExperience" required>
+                <option value="">Selecione</option>
+                <option value="Sim">Sim</option>
+                <option value="Nao">Nao</option>
+              </select>
+            </label>
+            <label id="experienceDescriptionField" style="display: none;">Descreva sua experiência
+              <textarea id="experienceDescription" rows="3" maxlength="500" placeholder="Conte brevemente sua experiencia"></textarea>
+            </label>
+            <button type="submit">Enviar reserva</button>
+            <p class="feedback info" id="formFeedback" aria-live="polite"></p>
+          </form>
+        </div>
       </div>
     </div>
   </div>
