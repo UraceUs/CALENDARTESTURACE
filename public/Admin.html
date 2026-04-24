@@ -491,6 +491,11 @@
       background: #f5f7ff;
     }
 
+    tbody tr.is-selected,
+    tbody tr.is-selected:hover {
+      background: #d5ddf6;
+    }
+
     tbody tr:last-child td {
       border-bottom: none;
     }
@@ -2405,6 +2410,10 @@
       const allCheckboxes = reservationTableBody.querySelectorAll('input[type=checkbox]');
       allCheckboxes.forEach(cb => {
         cb.checked = selectAllCheckbox.checked;
+        const row = cb.closest('tr');
+        if (row) {
+          row.classList.toggle('is-selected', selectAllCheckbox.checked);
+        }
         if (selectAllCheckbox.checked) {
           selectedIds.add(cb.dataset.id);
         } else {
@@ -2416,7 +2425,13 @@
 
     bulkClearBtn.addEventListener('click', () => {
       selectedIds.clear();
-      reservationTableBody.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = false);
+      reservationTableBody.querySelectorAll('input[type=checkbox]').forEach(cb => {
+        cb.checked = false;
+        const row = cb.closest('tr');
+        if (row) {
+          row.classList.remove('is-selected');
+        }
+      });
       updateBulkBar();
     });
 
@@ -2494,6 +2509,7 @@
 
       sorted.forEach(reserva => {
         const row = document.createElement('tr');
+        row.classList.toggle('is-selected', selectedIds.has(reserva.id));
 
         const checkCell = document.createElement('td');
         const checkbox = document.createElement('input');
@@ -2506,6 +2522,7 @@
           } else {
             selectedIds.delete(reserva.id);
           }
+          row.classList.toggle('is-selected', checkbox.checked);
           updateBulkBar();
         });
         checkCell.appendChild(checkbox);
