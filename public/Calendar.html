@@ -19,6 +19,16 @@
       --text: #fff;
       --muted: #5e6778;
       --hero-glass: rgba(255, 255, 255, 0.12);
+      /* Força branco nos títulos dos cards e textos do calendário */
+      .booking-card-title,
+      .selected-date,
+      .week-days,
+      .week-days div,
+      .period-label {
+        color: #fff !important;
+        text-shadow: none !important;
+        -webkit-text-fill-color: #fff !important;
+      }
     }
 
     * { box-sizing: border-box; }
@@ -34,7 +44,20 @@
       height: 56px;
       display: flex;
       align-items: center;
-      justify-content: space-between;
+        /* Força branco absoluto nos textos do calendário e títulos dos cards */
+        .calendar-panel .week-days,
+        .calendar-panel .week-days div,
+        .calendar-panel .selected-date,
+        .calendar-panel .period-label,
+        .booking-card-title,
+        .cards-row .booking-card-title,
+        .booking-card h3,
+        .booking-card label,
+        .booking-card .section-label {
+          color: #fff !important;
+          text-shadow: none !important;
+          -webkit-text-fill-color: #fff !important;
+        }
       padding: 0 22px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.14);
       background: rgba(3, 6, 12, 0.92);
@@ -237,7 +260,7 @@
       font-weight: 800;
       text-transform: uppercase;
       letter-spacing: 0.06em;
-      color: #1f2f6f;
+      color: #fff;
       margin: 0 0 14px;
       padding-bottom: 10px;
       border-bottom: 1px solid #c4d0f0;
@@ -254,7 +277,7 @@
       grid-template-columns: repeat(7, 1fr);
       gap: 8px;
       margin-bottom: 8px;
-      color: var(--muted);
+      color: #fff;
       font-size: 0.76rem;
       font-weight: 700;
       text-align: center;
@@ -349,6 +372,7 @@
     .period-label {
       width: 10px;
       font-weight: 700;
+      color: #fff;
     }
 
     .slot-dots {
@@ -387,7 +411,7 @@
     .selected-date {
       margin-top: 10px;
       font-size: 0.9rem;
-      color: var(--accent);
+      color: #fff;
       font-weight: 600;
     }
 
