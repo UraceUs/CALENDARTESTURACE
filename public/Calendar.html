@@ -74,7 +74,7 @@
     }
 
     .hero {
-      max-width: 1280px;
+      width: min(96vw, 1440px);
       margin: 0 auto;
       min-height: 520px;
       padding: 42px 22px 64px;
@@ -147,7 +147,7 @@
     }
 
     .page {
-      max-width: 1240px;
+      width: min(96vw, 1400px);
       margin: -28px auto 0;
       padding: 0 22px 22px;
       position: relative;
@@ -158,6 +158,8 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
       margin-bottom: 14px;
       border: 1px solid #273353;
       background: #0f1a36;
@@ -212,8 +214,9 @@
 
     .layout {
       display: grid;
-      grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+      grid-template-columns: minmax(0, 1fr) minmax(380px, 460px);
       gap: 18px;
+      align-items: start;
     }
 
     .calendar-panel {
@@ -400,15 +403,15 @@
     }
 
     .service-options {
-      display: flex;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 10px;
-      flex-wrap: wrap;
       margin-bottom: 12px;
     }
     .service-card {
-      flex: 1;
-      min-width: 120px;
-      padding: 14px;
+      min-width: 0;
+      min-height: 90px;
+      padding: 12px 10px;
       border: 1px solid var(--border);
       border-radius: 12px;
       background: #ffffff;
@@ -441,8 +444,10 @@
       margin-bottom: 8px;
     }
     .service-name {
-      font-size: 0.95rem;
+      font-size: 0.84rem;
+      line-height: 1.2;
       font-weight: 700;
+      word-break: break-word;
     }
 
     .period-options {
@@ -572,7 +577,7 @@
       color: var(--danger);
     }
 
-    @media(max-width: 920px) {
+    @media(max-width: 1180px) {
       .hero {
         grid-template-columns: 1fr;
         min-height: auto;
@@ -610,8 +615,9 @@
       .layout {
         grid-template-columns: 1fr;
       }
-      .panel {
-        min-height: auto;
+
+      .booking-panel {
+        padding: 14px;
       }
 
       .days-grid button {
@@ -620,7 +626,6 @@
 
       .service-card,
       .period-card {
-        min-width: 100px;
         padding: 12px;
       }
     }
