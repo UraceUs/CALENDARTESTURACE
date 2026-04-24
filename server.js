@@ -76,6 +76,7 @@ const DEFAULT_SERVICE_ICONS = {
 };
 
 const ALLOWED_PERIODS = new Set(['manha', 'tarde']);
+const ALL_PERIODS = ['manha', 'tarde'];
 
 const firestoreState = {
   enabled: false,
@@ -1693,6 +1694,24 @@ function normalizeEnabledServices(values) {
   return Array.from(unique);
 }
 
+function normalizeEnabledPeriods(values) {
+  const allPeriodsSet = new Set(ALL_PERIODS);
+
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  const unique = new Set();
+  values.forEach(value => {
+    const normalized = normalizeText(value);
+    if (normalized && allPeriodsSet.has(normalized)) {
+      unique.add(normalized);
+    }
+  });
+
+  return Array.from(unique);
+}
+
 function normalizeAllServices(values) {
   if (!Array.isArray(values)) {
     return [];
@@ -1787,6 +1806,38 @@ async function saveServiceVisibilityConfig(allServices, enabledServices, service
   return readServiceVisibilityConfig();
 }
 
+async function readPeriodVisibilityConfig() {
+  const ref = getDb().collection('config').doc('period_visibility');
+  const snapshot = await ref.get();
+  if (!snapshot.exists) {
+    return {
+      allPeriods: ALL_PERIODS,
+      enabledPeriods: ALL_PERIODS,
+      updatedAt: null
+    };
+  }
+
+  const data = snapshot.data() || {};
+  const enabledPeriods = normalizeEnabledPeriods(data.enabledPeriods);
+  const safeEnabled = Array.isArray(data.enabledPeriods) ? enabledPeriods : ALL_PERIODS;
+
+  return {
+    allPeriods: ALL_PERIODS,
+    enabledPeriods: safeEnabled,
+    updatedAt: asIsoDateTime(data.updatedAt)
+  };
+}
+
+async function savePeriodVisibilityConfig(enabledPeriods) {
+  const ref = getDb().collection('config').doc('period_visibility');
+  await ref.set({
+    enabledPeriods,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  return readPeriodVisibilityConfig();
+}
+
 function isValidDateString(date) {
   if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return false;
@@ -1864,7 +1915,7 @@ function isValidEmailAddress(value) {
   return true;
 }
 
-function validateReserva(payload, allowedServices = ALLOWED_SERVICES) {
+function validateReserva(payload, allowedServices = ALLOWED_SERVICES, allowedPeriods = ALLOWED_PERIODS) {
   const errors = [];
   const phoneRegex = /^[0-9()+\-\s]{8,20}$/;
 
@@ -1904,8 +1955,8 @@ function validateReserva(payload, allowedServices = ALLOWED_SERVICES) {
     errors.push('Campo data deve estar no formato YYYY-MM-DD e ser valido.');
   }
 
-  if (!ALLOWED_PERIODS.has(periodo)) {
-    errors.push('Campo periodo deve ser manha ou tarde.');
+  if (!allowedPeriods.has(periodo)) {
+    errors.push('Campo periodo invalido ou indisponivel.');
   }
 
   if (!isValidEmailAddress(email)) {
@@ -2134,9 +2185,13 @@ async function requestHandler(req, res) {
 
       try {
         const payload = await parseJsonBody(req);
-        const serviceConfig = await readServiceVisibilityConfig();
+        const [serviceConfig, periodConfig] = await Promise.all([
+          readServiceVisibilityConfig(),
+          readPeriodVisibilityConfig()
+        ]);
         const allowedServices = new Set(serviceConfig.enabledServices || serviceConfig.allServices || ALL_SERVICES);
-        const { errors, reserva } = validateReserva(payload || {}, allowedServices);
+        const allowedPeriods = new Set(periodConfig.enabledPeriods || periodConfig.allPeriods || ALL_PERIODS);
+        const { errors, reserva } = validateReserva(payload || {}, allowedServices, allowedPeriods);
         if (errors.length > 0) {
           sendError(res, 400, 'VALIDATION_ERROR', 'Dados da reserva invalidos.', errors);
           return;
@@ -2748,6 +2803,82 @@ async function requestHandler(req, res) {
     }
 
     sendError(res, 405, 'METHOD_NOT_ALLOWED', 'Metodo nao permitido para /api/config/servicos.');
+    return;
+  }
+
+  if (url.pathname === '/api/config/periodos') {
+    if (!ensureStorageReady()) {
+      sendError(
+        res,
+        500,
+        'STORAGE_NOT_READY',
+        `Firestore nao inicializado. ${firestoreState.reason || 'Verifique credenciais.'}`
+      );
+      return;
+    }
+
+    if (req.method === 'GET') {
+      try {
+        const config = await readPeriodVisibilityConfig();
+        sendJson(res, config, 200);
+      } catch (error) {
+        if (isCredentialError(error)) {
+          sendError(res, 500, 'STORAGE_NOT_READY', credentialHelpMessage());
+          return;
+        }
+
+        sendError(res, 500, 'READ_PERIOD_CONFIG_ERROR', `Erro interno ao ler periodos visiveis. ${error.message}`);
+      }
+      return;
+    }
+
+    if (req.method === 'POST') {
+      try {
+        const payload = await parseJsonBody(req);
+        const providedEnabled = payload && payload.enabledPeriods;
+        const errors = [];
+
+        if (!Array.isArray(providedEnabled)) {
+          errors.push('Campo enabledPeriods deve ser um array.');
+        }
+
+        const enabledPeriods = normalizeEnabledPeriods(providedEnabled);
+        if (Array.isArray(providedEnabled) && enabledPeriods.length !== providedEnabled.length) {
+          errors.push('enabledPeriods contem periodos invalidos. Use manha e/ou tarde.');
+        }
+
+        if (errors.length > 0) {
+          sendError(res, 400, 'VALIDATION_ERROR', 'Dados de periodos visiveis invalidos.', errors);
+          return;
+        }
+
+        const updated = await savePeriodVisibilityConfig(enabledPeriods);
+        sendJson(res, updated, 200);
+      } catch (error) {
+        if (error.message === 'PAYLOAD_TOO_LARGE') {
+          sendError(res, 413, 'PAYLOAD_TOO_LARGE', 'Corpo da requisicao muito grande.');
+          return;
+        }
+        if (error.message === 'EMPTY_BODY') {
+          sendError(res, 400, 'EMPTY_BODY', 'O corpo da requisicao nao pode estar vazio.');
+          return;
+        }
+        if (error.message === 'INVALID_JSON') {
+          sendError(res, 400, 'INVALID_JSON', 'JSON invalido no corpo da requisicao.');
+          return;
+        }
+        if (isCredentialError(error)) {
+          sendError(res, 500, 'STORAGE_NOT_READY', credentialHelpMessage());
+          return;
+        }
+
+        sendError(res, 500, 'WRITE_PERIOD_CONFIG_ERROR', `Erro interno ao salvar periodos visiveis. ${error.message}`);
+      }
+
+      return;
+    }
+
+    sendError(res, 405, 'METHOD_NOT_ALLOWED', 'Metodo nao permitido para /api/config/periodos.');
     return;
   }
 

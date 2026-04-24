@@ -630,6 +630,7 @@
       blockedIndex: new Map(),
       allServices: [...DEFAULT_SERVICES],
       enabledServices: new Set(DEFAULT_SERVICES),
+      enabledPeriods: new Set(bookingPeriods.map(item => item.value)),
       serviceIcons: { ...DEFAULT_SERVICE_ICONS_BY_NAME },
       apiBase: '',
       isSubmitting: false,
@@ -919,11 +920,8 @@
       return state.blockedIndex.has(periodKey(date, 'all')) || state.blockedIndex.has(periodKey(date, period));
     }
 
-    function areBothPeriodsAvailableInAdmin(date) {
-      if (!date) {
-        return false;
-      }
-      return !isBlocked(date, 'manha') && !isBlocked(date, 'tarde');
+    function isPeriodEnabled(period) {
+      return state.enabledPeriods.has(period);
     }
 
     function countPeriodReservations(date, period) {
@@ -931,10 +929,13 @@
     }
 
     function isDayFullyBooked(date) {
-      return (
-        (countPeriodReservations(date, 'manha') >= getPeriodCapacity(date, 'manha') || isBlocked(date, 'manha')) &&
-        (countPeriodReservations(date, 'tarde') >= getPeriodCapacity(date, 'tarde') || isBlocked(date, 'tarde'))
-      );
+      return bookingPeriods.every(period => {
+        const periodValue = period.value;
+        if (!isPeriodEnabled(periodValue)) {
+          return true;
+        }
+        return countPeriodReservations(date, periodValue) >= getPeriodCapacity(date, periodValue) || isBlocked(date, periodValue);
+      });
     }
 
     function createDotsHtml(occupiedCount, total, blocked, selectedPreview = false) {
@@ -1048,6 +1049,14 @@
       return response.json();
     }
 
+    async function loadPeriodVisibilityConfig() {
+      const response = await fetchWithApi('/api/config/periodos');
+      if (!response.ok) {
+        throw new Error(await readApiError(response, 'Nao foi possivel carregar periodos visiveis.'));
+      }
+      return response.json();
+    }
+
     function applyServiceVisibilityConfig(config) {
       const allServices = Array.isArray(config && config.allServices) && config.allServices.length > 0
         ? config.allServices
@@ -1091,6 +1100,28 @@
 
       serviceHint.textContent = '';
       serviceHint.className = 'feedback info';
+    }
+
+    function applyPeriodVisibilityConfig(config) {
+      const allPeriods = bookingPeriods.map(item => item.value);
+      const enabledPeriods = Array.isArray(config && config.enabledPeriods)
+        ? config.enabledPeriods.filter(period => allPeriods.includes(period))
+        : allPeriods;
+
+      state.enabledPeriods = new Set(enabledPeriods);
+
+      if (!periodInput.value || !state.enabledPeriods.has(periodInput.value)) {
+        periodInput.value = '';
+      }
+
+      periodCards.forEach(card => {
+        const periodValue = card.dataset.period;
+        const visible = state.enabledPeriods.has(periodValue);
+        card.style.display = visible ? '' : 'none';
+        if (!visible) {
+          card.classList.remove('active');
+        }
+      });
     }
 
     async function saveReserva(reserva) {
@@ -1167,7 +1198,8 @@
 
     function updatePeriodVisibility() {
       const date = dataInput.value;
-      const showPeriod = areBothPeriodsAvailableInAdmin(date);
+      const hasEnabledPeriod = bookingPeriods.some(item => state.enabledPeriods.has(item.value));
+      const showPeriod = Boolean(date) && hasEnabledPeriod;
 
       if (showPeriod) {
         periodField.style.display = 'block';
@@ -1181,8 +1213,10 @@
       periodInput.value = '';
       periodCards.forEach(card => card.classList.remove('active'));
 
-      if (date) {
-        periodHint.textContent = 'Periodo so aparece quando manha e tarde estiverem disponiveis no painel admin.';
+      if (!hasEnabledPeriod) {
+        periodHint.textContent = 'No momento, nenhum periodo esta disponivel para reserva.';
+      } else if (date) {
+        periodHint.textContent = '';
       } else {
         periodHint.textContent = '';
       }
@@ -1347,11 +1381,11 @@
       if (!isValidDateString(reserva.data)) {
         errors.push('Selecione uma data valida no calendario.');
       }
-      if (!areBothPeriodsAvailableInAdmin(reserva.data)) {
-        errors.push('Manha e tarde precisam estar disponiveis no painel admin para selecionar periodo.');
-      }
       if (!bookingPeriods.some(item => item.value === reserva.periodo)) {
         errors.push('Escolha Manhã ou Tarde.');
+      }
+      if (reserva.periodo && !state.enabledPeriods.has(reserva.periodo)) {
+        errors.push('Este periodo nao esta disponivel no momento.');
       }
       if (!isValidEmailAddress(reserva.email || '')) {
         errors.push('Informe um e-mail valido.');
@@ -1527,6 +1561,9 @@
         allServices: DEFAULT_SERVICES,
         enabledServices: DEFAULT_SERVICES
       });
+      applyPeriodVisibilityConfig({
+        enabledPeriods: bookingPeriods.map(item => item.value)
+      });
       refreshCalendarUi();
       bindEvents();
       toggleExperienceDescriptionField();
@@ -1538,11 +1575,12 @@
         if (!hasApi) {
           throw new Error('API_UNAVAILABLE');
         }
-        const [reservas, disponibilidade, capacidade, serviceConfig] = await Promise.all([
+        const [reservas, disponibilidade, capacidade, serviceConfig, periodConfig] = await Promise.all([
           loadReservas(),
           loadDisponibilidade(),
           loadCapacidade(),
-          loadServiceVisibilityConfig()
+          loadServiceVisibilityConfig(),
+          loadPeriodVisibilityConfig()
         ]);
 
         state.reservas = reservas;
@@ -1550,6 +1588,7 @@
         rebuildPeriodIndex();
         rebuildBlockedIndex(disponibilidade);
         applyServiceVisibilityConfig(serviceConfig);
+        applyPeriodVisibilityConfig(periodConfig);
         refreshCalendarUi();
         setFeedback(formFeedback, 'info', '');
       } catch (error) {

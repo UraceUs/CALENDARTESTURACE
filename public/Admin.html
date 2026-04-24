@@ -1078,6 +1078,12 @@
             <div class="service-visibility-list" id="serviceVisibilityList"></div>
             <button type="button" class="btn-primary" id="saveServicesBtn">Salvar serviços visíveis</button>
             <p class="feedback" id="serviceVisibilityFeedback" aria-live="polite"></p>
+
+            <h3>Períodos Disponíveis no Cliente</h3>
+            <p class="small-note">Ative os períodos que podem ser reservados na página do cliente.</p>
+            <div class="service-visibility-list" id="periodVisibilityList"></div>
+            <button type="button" class="btn-primary" id="savePeriodsBtn">Salvar períodos disponíveis</button>
+            <p class="feedback" id="periodVisibilityFeedback" aria-live="polite"></p>
           </div>
         </div>
       </section>
@@ -1148,6 +1154,8 @@
       all: 'Dia todo'
     };
 
+    const PERIOD_VISIBILITY_OPTIONS = ['manha', 'tarde'];
+
     const CANONICAL_API_BASES = [
       'https://calendar-backend-w6wm.onrender.com'
     ];
@@ -1165,6 +1173,8 @@
       resendStatusById: {},
       allServices: [],
       enabledServices: [],
+      allPeriods: [...PERIOD_VISIBILITY_OPTIONS],
+      enabledPeriods: [...PERIOD_VISIBILITY_OPTIONS],
       serviceIcons: {}
     };
 
@@ -1194,6 +1204,9 @@
     const addServiceBtn = document.getElementById('addServiceBtn');
     const saveServicesBtn = document.getElementById('saveServicesBtn');
     const serviceVisibilityFeedback = document.getElementById('serviceVisibilityFeedback');
+    const periodVisibilityList = document.getElementById('periodVisibilityList');
+    const savePeriodsBtn = document.getElementById('savePeriodsBtn');
+    const periodVisibilityFeedback = document.getElementById('periodVisibilityFeedback');
 
     const reservationsFeedback = document.getElementById('reservationsFeedback');
     const reservationTableBody = document.getElementById('reservationTableBody');
@@ -1984,6 +1997,14 @@
       return response.json();
     }
 
+    async function fetchPeriodVisibilityConfig() {
+      const response = await fetchWithApi('/api/config/periodos');
+      if (!response.ok) {
+        throw new Error(await parseApiError(response, 'Erro ao carregar períodos disponíveis.'));
+      }
+      return response.json();
+    }
+
     async function saveServiceVisibilityConfig(payload) {
       const response = await fetchWithApi('/api/config/servicos', {
         method: 'POST',
@@ -1993,6 +2014,20 @@
 
       if (!response.ok) {
         throw new Error(await parseApiError(response, 'Erro ao salvar serviços visíveis.'));
+      }
+
+      return response.json();
+    }
+
+    async function savePeriodVisibilityConfig(payload) {
+      const response = await fetchWithApi('/api/config/periodos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error(await parseApiError(response, 'Erro ao salvar períodos disponíveis.'));
       }
 
       return response.json();
@@ -2051,6 +2086,38 @@
       });
     }
 
+    function renderPeriodVisibilityPanel() {
+      periodVisibilityList.innerHTML = '';
+
+      const enabledSet = new Set(state.enabledPeriods);
+      state.allPeriods.forEach(period => {
+        const row = document.createElement('div');
+        row.className = 'service-visibility-item';
+
+        const name = document.createElement('span');
+        name.className = 'service-name-label';
+        name.textContent = bookingPeriods[period] || period;
+
+        const switchLabel = document.createElement('label');
+        switchLabel.className = 'switch';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = period;
+        checkbox.checked = enabledSet.has(period);
+
+        const slider = document.createElement('span');
+        slider.className = 'slider';
+
+        switchLabel.appendChild(checkbox);
+        switchLabel.appendChild(slider);
+
+        row.appendChild(name);
+        row.appendChild(switchLabel);
+        periodVisibilityList.appendChild(row);
+      });
+    }
+
     function collectEnabledServicesFromPanel() {
       return Array.from(serviceVisibilityList.querySelectorAll('input[type="checkbox"]:checked'))
         .map(input => input.value)
@@ -2069,6 +2136,12 @@
       });
 
       return iconMap;
+    }
+
+    function collectEnabledPeriodsFromPanel() {
+      return Array.from(periodVisibilityList.querySelectorAll('input[type="checkbox"]:checked'))
+        .map(input => input.value)
+        .filter(value => PERIOD_VISIBILITY_OPTIONS.includes(value));
     }
 
     async function handleAddService() {
@@ -2767,11 +2840,12 @@
     }
 
     async function refreshAll() {
-      const [reservas, disponibilidade, capacidade, serviceConfig] = await Promise.all([
+      const [reservas, disponibilidade, capacidade, serviceConfig, periodConfig] = await Promise.all([
         fetchReservas(),
         fetchDisponibilidade(),
         fetchCapacidade(),
-        fetchServiceVisibilityConfig()
+        fetchServiceVisibilityConfig(),
+        fetchPeriodVisibilityConfig()
       ]);
 
       state.reservas = reservas;
@@ -2779,12 +2853,19 @@
       state.capacidade = capacidade;
       state.allServices = Array.isArray(serviceConfig.allServices) ? serviceConfig.allServices : [];
       state.enabledServices = Array.isArray(serviceConfig.enabledServices) ? serviceConfig.enabledServices : [];
+      state.allPeriods = Array.isArray(periodConfig && periodConfig.allPeriods) && periodConfig.allPeriods.length > 0
+        ? periodConfig.allPeriods
+        : [...PERIOD_VISIBILITY_OPTIONS];
+      state.enabledPeriods = Array.isArray(periodConfig && periodConfig.enabledPeriods)
+        ? periodConfig.enabledPeriods.filter(period => state.allPeriods.includes(period))
+        : [...state.allPeriods];
       state.serviceIcons = serviceConfig && typeof serviceConfig.serviceIcons === 'object' ? serviceConfig.serviceIcons : {};
       syncResendStatusMap(reservas);
       renderReservas();
       renderDisponibilidade();
       renderCapacidade();
       renderServiceVisibilityPanel();
+      renderPeriodVisibilityPanel();
       renderAdminCalendar();
       updateSelectedDayNote();
     }
@@ -2811,6 +2892,29 @@
         setFeedback(serviceVisibilityFeedback, 'error', error.message || 'Falha ao salvar serviços visíveis.');
       } finally {
         saveServicesBtn.disabled = false;
+      }
+    }
+
+    async function handleSaveVisiblePeriods() {
+      const enabledPeriods = collectEnabledPeriodsFromPanel();
+
+      try {
+        savePeriodsBtn.disabled = true;
+        setFeedback(periodVisibilityFeedback, '', 'Salvando períodos disponíveis...');
+
+        const updated = await savePeriodVisibilityConfig({ enabledPeriods });
+        state.allPeriods = Array.isArray(updated.allPeriods) && updated.allPeriods.length > 0
+          ? updated.allPeriods
+          : [...PERIOD_VISIBILITY_OPTIONS];
+        state.enabledPeriods = Array.isArray(updated.enabledPeriods)
+          ? updated.enabledPeriods.filter(period => state.allPeriods.includes(period))
+          : [...state.allPeriods];
+        renderPeriodVisibilityPanel();
+        setFeedback(periodVisibilityFeedback, 'success', 'Períodos disponíveis atualizados com sucesso.');
+      } catch (error) {
+        setFeedback(periodVisibilityFeedback, 'error', error.message || 'Falha ao salvar períodos disponíveis.');
+      } finally {
+        savePeriodsBtn.disabled = false;
       }
     }
 
@@ -2975,6 +3079,7 @@
       }
     });
     saveServicesBtn.addEventListener('click', handleSaveVisibleServices);
+    savePeriodsBtn.addEventListener('click', handleSaveVisiblePeriods);
 
     initLayoutEditor();
 
