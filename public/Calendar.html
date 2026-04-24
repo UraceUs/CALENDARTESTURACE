@@ -16,7 +16,7 @@
       --accent-soft: #dfe6ff;
       --danger: #ff2f3e;
       --danger-soft: #ffe9ec;
-      --text: #0f1626;
+      --text: #fff;
       --muted: #5e6778;
       --hero-glass: rgba(255, 255, 255, 0.12);
     }
@@ -276,7 +276,7 @@
       border: 1px solid #b6c3e4;
       border-radius: 10px;
       background: linear-gradient(180deg, #232c47 0%, #181e2e 100%);
-      color: var(--text);
+      color: #fff;
       padding: 8px;
       cursor: pointer;
       text-align: left;
@@ -297,7 +297,7 @@
       cursor: not-allowed;
       background: #f8fafc;
       border-color: var(--border);
-      color: var(--text);
+      color: #fff;
     }
 
     .days-grid button.active {
@@ -530,9 +530,14 @@
       font-size: 0.95rem;
       margin-top: 6px;
       background: #232c47;
-      color: var(--text);
+      color: #fff !important;
       font-family: inherit;
       transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    }
+    .booking-card input::placeholder,
+    .booking-card textarea::placeholder {
+      color: #fff !important;
+      opacity: 1;
     }
 
     .booking-card input:focus-visible,
