@@ -1159,6 +1159,7 @@
       currentMonth: new Date().getMonth(),
       currentYear: new Date().getFullYear(),
       selectedDay: '',
+      selectedDates: [],
       searchQuery: '',
       apiBase: '',
       resendStatusById: {},
@@ -1784,22 +1785,42 @@
     }
 
     function updateSelectedDayNote() {
-      if (!state.selectedDay) {
-        selectedDayNote.textContent = 'Clique em um dia para preencher a data no painel de disponibilidade.';
+      const selectedDates = [...new Set(state.selectedDates)].sort();
+
+      if (selectedDates.length === 0) {
+        selectedDayNote.textContent = 'Clique em um ou mais dias para preencher o painel de disponibilidade e vagas.';
         return;
       }
 
-      const morningCount = countReservationsFor(state.selectedDay, 'manha');
-      const afternoonCount = countReservationsFor(state.selectedDay, 'tarde');
-      const morningCapacity = getPeriodCapacity(state.selectedDay, 'manha');
-      const afternoonCapacity = getPeriodCapacity(state.selectedDay, 'tarde');
-      const morningBlocked = isPeriodBlocked(state.selectedDay, 'manha');
-      const afternoonBlocked = isPeriodBlocked(state.selectedDay, 'tarde');
-      const formattedDate = formatDateForSummary(state.selectedDay);
+      if (selectedDates.length === 1) {
+        const selectedDate = selectedDates[0];
+        const morningCount = countReservationsFor(selectedDate, 'manha');
+        const afternoonCount = countReservationsFor(selectedDate, 'tarde');
+        const morningCapacity = getPeriodCapacity(selectedDate, 'manha');
+        const afternoonCapacity = getPeriodCapacity(selectedDate, 'tarde');
+        const morningBlocked = isPeriodBlocked(selectedDate, 'manha');
+        const afternoonBlocked = isPeriodBlocked(selectedDate, 'tarde');
+        const formattedDate = formatDateForSummary(selectedDate);
+
+        selectedDayNote.textContent =
+          `Dia ${formattedDate} | Manhã: ${morningCount}/${morningCapacity}${morningBlocked ? ' (bloqueado)' : ''} | ` +
+          `Tarde: ${afternoonCount}/${afternoonCapacity}${afternoonBlocked ? ' (bloqueado)' : ''}`;
+        return;
+      }
+
+      const morningCount = selectedDates.reduce((acc, date) => acc + countReservationsFor(date, 'manha'), 0);
+      const afternoonCount = selectedDates.reduce((acc, date) => acc + countReservationsFor(date, 'tarde'), 0);
+      const morningCapacity = selectedDates.reduce((acc, date) => acc + getPeriodCapacity(date, 'manha'), 0);
+      const afternoonCapacity = selectedDates.reduce((acc, date) => acc + getPeriodCapacity(date, 'tarde'), 0);
+      const morningBlockedDays = selectedDates.filter(date => isPeriodBlocked(date, 'manha')).length;
+      const afternoonBlockedDays = selectedDates.filter(date => isPeriodBlocked(date, 'tarde')).length;
+      const preview = selectedDates.slice(0, 3).map(formatDateForSummary).join(', ');
+      const suffix = selectedDates.length > 3 ? ', ...' : '';
 
       selectedDayNote.textContent =
-        `Dia ${formattedDate} | Manhã: ${morningCount}/${morningCapacity}${morningBlocked ? ' (bloqueado)' : ''} | ` +
-        `Tarde: ${afternoonCount}/${afternoonCapacity}${afternoonBlocked ? ' (bloqueado)' : ''}`;
+        `${selectedDates.length} datas selecionadas (${preview}${suffix}) | ` +
+        `Manhã: ${morningCount}/${morningCapacity} (${morningBlockedDays} bloqueado(s)) | ` +
+        `Tarde: ${afternoonCount}/${afternoonCapacity} (${afternoonBlockedDays} bloqueado(s))`;
     }
 
     function createDotsHtml(occupiedCount, total, blocked) {
@@ -1849,6 +1870,8 @@
         fragment.appendChild(document.createElement('div'));
       }
 
+      const selectedDateSet = new Set(state.selectedDates);
+
       for (let day = 1; day <= totalDays; day++) {
         const date = `${state.currentYear}-${String(state.currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         const manhaCount = countReservationsFor(date, 'manha');
@@ -1872,19 +1895,28 @@
           button.classList.add('blocked');
         }
 
-        if (state.selectedDay === date) {
+        if (selectedDateSet.has(date)) {
           button.classList.add('active');
         }
 
         button.addEventListener('click', () => {
-          const isSameDay = state.selectedDay === date;
-          state.selectedDay = isSameDay ? '' : date;
+          const nextSelection = new Set(state.selectedDates);
+          if (nextSelection.has(date)) {
+            nextSelection.delete(date);
+          } else {
+            nextSelection.add(date);
+          }
 
-          if (state.selectedDay) {
-            availabilityStartDate.value = date;
-            availabilityEndDate.value = date;
-            capacityStartDate.value = date;
-            capacityEndDate.value = date;
+          state.selectedDates = [...nextSelection].sort();
+          state.selectedDay = state.selectedDates[state.selectedDates.length - 1] || '';
+
+          if (state.selectedDates.length > 0) {
+            const startDate = state.selectedDates[0];
+            const endDate = state.selectedDates[state.selectedDates.length - 1];
+            availabilityStartDate.value = startDate;
+            availabilityEndDate.value = endDate;
+            capacityStartDate.value = startDate;
+            capacityEndDate.value = endDate;
           } else {
             availabilityStartDate.value = '';
             availabilityEndDate.value = '';
@@ -2424,6 +2456,17 @@
         .trim();
     }
 
+    function clearCalendarDateSelection() {
+      if (!state.selectedDates.length) {
+        return;
+      }
+
+      state.selectedDates = [];
+      state.selectedDay = '';
+      renderAdminCalendar();
+      updateSelectedDayNote();
+    }
+
     function updateBulkBar() {
       bulkCount.textContent = `${selectedIds.size} selecionado(s)`;
       const hasSelection = selectedIds.size > 0;
@@ -2472,6 +2515,10 @@
     bulkSearchInput.addEventListener('input', () => {
       state.searchQuery = bulkSearchInput.value || '';
       renderReservas();
+    });
+
+    [availabilityStartDate, availabilityEndDate, capacityStartDate, capacityEndDate].forEach(input => {
+      input.addEventListener('change', clearCalendarDateSelection);
     });
 
     bulkDeleteBtn.addEventListener('click', async () => {
@@ -2771,19 +2818,55 @@
       const dataInicial = normalizeDateInput(availabilityStartDate.value);
       const dataFinal = normalizeDateInput(availabilityEndDate.value);
       const periodo = availabilityPeriod.value;
+      const selectedDates = [...new Set(state.selectedDates)].sort();
 
-      if (!dataInicial || !dataFinal) {
+      if (selectedDates.length === 0 && (!dataInicial || !dataFinal)) {
         setFeedback(availabilityFeedback, 'error', 'Selecione data inicial e final para alterar disponibilidade.');
         return;
       }
 
-      if (dataFinal < dataInicial) {
+      if (selectedDates.length === 0 && dataFinal < dataInicial) {
         setFeedback(availabilityFeedback, 'error', 'A data final deve ser maior ou igual a data inicial.');
         return;
       }
 
       try {
         setFeedback(availabilityFeedback, '', '');
+        if (selectedDates.length > 0) {
+          let latestDisponibilidade = state.disponibilidade;
+          let successCount = 0;
+
+          for (const date of selectedDates) {
+            try {
+              latestDisponibilidade = await saveDisponibilidade({
+                dataInicial: date,
+                dataFinal: date,
+                periodo,
+                bloqueado
+              });
+              successCount++;
+            } catch (error) {
+              console.error('Falha ao aplicar disponibilidade em data selecionada:', date, error);
+            }
+          }
+
+          if (successCount === 0) {
+            throw new Error('Nenhuma das datas selecionadas pôde ser atualizada.');
+          }
+
+          state.disponibilidade = latestDisponibilidade;
+          renderDisponibilidade();
+          await refreshAll();
+          setFeedback(
+            availabilityFeedback,
+            'success',
+            bloqueado
+              ? `Período bloqueado em ${successCount} data(s) selecionada(s).`
+              : `Período desbloqueado em ${successCount} data(s) selecionada(s).`
+          );
+          return;
+        }
+
         state.disponibilidade = await saveDisponibilidade({
           dataInicial,
           dataFinal,
@@ -2807,13 +2890,14 @@
       const dataFinal = normalizeDateInput(capacityEndDate.value);
       const periodo = capacityPeriod.value;
       const quantidade = Number(capacityAmount.value);
+      const selectedDates = [...new Set(state.selectedDates)].sort();
 
-      if (!dataInicial || !dataFinal) {
+      if (selectedDates.length === 0 && (!dataInicial || !dataFinal)) {
         setFeedback(capacityFeedback, 'error', 'Selecione data inicial e final para adicionar vagas.');
         return;
       }
 
-      if (dataFinal < dataInicial) {
+      if (selectedDates.length === 0 && dataFinal < dataInicial) {
         setFeedback(capacityFeedback, 'error', 'A data final deve ser maior ou igual a data inicial.');
         return;
       }
@@ -2826,6 +2910,36 @@
       try {
         setFeedback(capacityFeedback, '', '');
         addCapacityBtn.disabled = true;
+        if (selectedDates.length > 0) {
+          let latestCapacidade = state.capacidade;
+          let successCount = 0;
+
+          for (const date of selectedDates) {
+            try {
+              latestCapacidade = await addCapacity({
+                dataInicial: date,
+                dataFinal: date,
+                periodo,
+                quantidade
+              });
+              successCount++;
+            } catch (error) {
+              console.error('Falha ao adicionar capacidade em data selecionada:', date, error);
+            }
+          }
+
+          if (successCount === 0) {
+            throw new Error('Nenhuma das datas selecionadas pôde ser atualizada.');
+          }
+
+          state.capacidade = latestCapacidade;
+          renderCapacidade();
+          renderAdminCalendar();
+          updateSelectedDayNote();
+          setFeedback(capacityFeedback, 'success', `Vagas adicionadas em ${successCount} data(s) selecionada(s).`);
+          return;
+        }
+
         if (dataInicial !== capacityStartDate.value) {
           capacityStartDate.value = dataInicial;
         }
