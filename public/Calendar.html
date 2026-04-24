@@ -276,7 +276,7 @@
       border: 1px solid #b6c3e4;
       border-radius: 10px;
       background: linear-gradient(180deg, #232c47 0%, #181e2e 100%);
-      color: #fff;
+      color: #fff !important;
       padding: 8px;
       cursor: pointer;
       text-align: left;
@@ -530,14 +530,9 @@
       font-size: 0.95rem;
       margin-top: 6px;
       background: #232c47;
-      color: #fff !important;
+      color: var(--text);
       font-family: inherit;
       transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
-    }
-    .booking-card input::placeholder,
-    .booking-card textarea::placeholder {
-      color: #fff !important;
-      opacity: 1;
     }
 
     .booking-card input:focus-visible,
