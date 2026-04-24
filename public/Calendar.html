@@ -562,7 +562,7 @@
               <input type="text" id="responsavelPiloto" required />
             </label>
             <label>E-mail
-              <input type="email" id="email" required maxlength="254" autocapitalize="off" autocomplete="email" inputmode="email" pattern="[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+" title="Informe um e-mail valido (ex.: nome@dominio.com)" />
+              <input type="email" id="email" required maxlength="254" autocapitalize="off" autocomplete="email" inputmode="email" pattern="[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}" title="Informe um e-mail valido (ex.: nome@dominio.com)" />
             </label>
             <label>Telefone
               <input type="tel" id="telefone" required />
@@ -1319,48 +1319,13 @@
         return false;
       }
 
-      const email = value.trim().toLowerCase();
+      const email = value.trim();
       if (!email || email.length > 254) {
         return false;
       }
 
-      const basicRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!basicRegex.test(email)) {
-        return false;
-      }
-
-      const [localPart, domain] = email.split('@');
-      if (!localPart || !domain) {
-        return false;
-      }
-
-      if (localPart.length > 64 || domain.length > 253) {
-        return false;
-      }
-
-      if (email.includes('..') || localPart.startsWith('.') || localPart.endsWith('.')) {
-        return false;
-      }
-
-      if (domain.startsWith('-') || domain.endsWith('-') || domain.startsWith('.') || domain.endsWith('.')) {
-        return false;
-      }
-
-      if (!/^[a-z0-9.-]+$/.test(domain)) {
-        return false;
-      }
-
-      const domainParts = domain.split('.').filter(Boolean);
-      if (domainParts.length < 2) {
-        return false;
-      }
-
-      const tld = domainParts[domainParts.length - 1];
-      if (!/^[a-z]{2,}$/.test(tld)) {
-        return false;
-      }
-
-      return true;
+      const emailRegex = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+      return emailRegex.test(email);
     }
 
     function validateReserva(reserva) {
