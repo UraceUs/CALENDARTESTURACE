@@ -1,0 +1,26 @@
+{
+  "name": "calendar",
+  "version": "1.0.0",
+  "description": "Estrutura organizada do projeto:",
+  "main": "server.js",
+  "scripts": {
+    "test": "npm run test:api && npm run test:e2e",
+    "test:api": "jest --runInBand",
+    "test:e2e": "playwright test",
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "firebase-admin": "^13.8.0",
+    "nodemailer": "^8.0.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "jest": "^30.3.0",
+    "playwright": "^1.59.1",
+    "supertest": "^7.2.2"
+  }
+}
