@@ -237,5 +237,3 @@ O repositório inclui `render.yaml` para criar o serviço backend Node.js.
 ## Workflow visual do processo
 
 - Veja o fluxo completo em `docs/workflows/reservation-automation-workflow.md`.
-\ n  
- 
