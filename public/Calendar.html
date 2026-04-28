@@ -774,54 +774,7 @@ Aqui, você não apenas dirige você entende o que é performance. Trabalhamos f
         </div>
       </div>
 
-      <!-- LINHA INFERIOR: Card 2 + Card 3 lado a lado -->
-      <div class="cards-row">
-        <!-- CARD 2: Informações de contato -->
-        <div class="booking-card">
-          <h3 class="booking-card-title">Informações de contato</h3>
-          <label>Nome do piloto
-            <input type="text" id="nomePiloto" required />
-          </label>
-          <label>Nome do responsável
-            <input type="text" id="responsavelPiloto" required />
-          </label>
-          <label>E-mail
-            <input type="email" id="email" required maxlength="254" autocapitalize="off" autocomplete="email" inputmode="email" pattern="[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}" title="Informe um e-mail valido (ex.: nome@dominio.com)" />
-          </label>
-          <label>Telefone
-            <input type="tel" id="telefone" required />
-          </label>
-        </div>
-
-        <!-- CARD 3: Dados do driver -->
-        <div class="booking-card">
-          <h3 class="booking-card-title">Dados do driver</h3>
-          <label>Idade do driver
-            <input type="number" id="age" min="1" max="120" required />
-          </label>
-          <label>Altura do driver
-            <input type="text" id="height" placeholder="Ex.: 1.72m" required />
-          </label>
-          <label>Peso do driver
-            <input type="text" id="weight" placeholder="Ex.: 68kg" required />
-          </label>
-          <label>Cintura do driver
-            <input type="text" id="waist" placeholder="Ex.: 78cm" required />
-          </label>
-          <label>Experiência no kart
-            <select id="kartingExperience" required>
-              <option value="">Selecione</option>
-              <option value="Sim">Sim</option>
-              <option value="Nao">Nao</option>
-            </select>
-          </label>
-          <label id="experienceDescriptionField" style="display: none;">Descreva sua experiência
-            <textarea id="experienceDescription" rows="3" maxlength="500" placeholder="Conte brevemente sua experiencia"></textarea>
-          </label>
-          <button type="submit">Enviar reserva</button>
-          <p class="feedback info" id="formFeedback" aria-live="polite"></p>
-        </div>
-      </div>
+      <!-- ...cards de contato e driver removidos, mantendo apenas calendário e sessão... -->
     </form>
   </div>
 
