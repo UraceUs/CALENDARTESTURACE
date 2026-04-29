@@ -147,9 +147,156 @@
   <script src="runtime-config.js"></script>
   <script src="js/reservation/actions/submit-actions.js?v=20260421-2"></script>
 <script>
-// --- INÍCIO BLOCO CALENDÁRIO (cópia de public/Calendar.html) ---
-[INSERIR AQUI O BLOCO COMPLETO DE JS DO CALENDÁRIO COPIADO DE public/Calendar.html]
-// --- FIM BLOCO CALENDÁRIO ---
+    const DEFAULT_MAX_RESERVATIONS_PER_PERIOD = 4;
+    const API_REQUEST_TIMEOUT_MS = 60000;
+
+    const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const bookingPeriods = [
+      { value: 'manha', label: 'Manhã' },
+      { value: 'tarde', label: 'Tarde' }
+    ];
+    const CANONICAL_API_BASES = [
+      'https://calendar-backend-w6wm.onrender.com'
+    ];
+
+    const DEFAULT_SERVICES = ['Professional Coaching', 'Summer Camp', 'Trackside Support'];
+    const DEFAULT_SERVICE_ICONS_BY_NAME = {
+      'Professional Coaching': '🏎️',
+      'Summer Camp': '🏁',
+      'Trackside Support': '🔧'
+    };
+    const DEFAULT_SERVICE_ICONS = ['🏎️', '🏁', '🔧', '🧑‍🏫', '⚙️', '📍', '🧪', '🎯'];
+
+    const state = {
+      currentMonth: new Date().getMonth(),
+      currentYear: new Date().getFullYear(),
+      selectedDay: null,
+      reservas: [],
+      capacidade: [],
+      periodIndex: new Map(),
+      blockedIndex: new Map(),
+      allServices: [...DEFAULT_SERVICES],
+      enabledServices: new Set(DEFAULT_SERVICES),
+      enabledPeriods: new Set(bookingPeriods.map(item => item.value)),
+      serviceIcons: { ...DEFAULT_SERVICE_ICONS_BY_NAME },
+      apiBase: '',
+      isSubmitting: false,
+      postSubmitActions: []
+    };
+
+    const LOCAL_API_BASE_KEY = 'calendar_api_base';
+
+    const monthsContainer = document.getElementById('months');
+    const daysGrid = document.getElementById('daysGrid');
+    const selectedDateText = document.getElementById('selectedDate');
+    const dataInput = document.getElementById('data');
+    const serviceInput = document.getElementById('servico');
+    const serviceOptions = document.getElementById('serviceOptions');
+    const serviceHint = document.getElementById('serviceHint');
+    const periodInput = document.getElementById('horario');
+    const periodField = document.getElementById('periodoField');
+    const periodHint = document.getElementById('periodHint');
+    const form = document.getElementById('reservaForm');
+    const formFeedback = document.getElementById('formFeedback') || document.createElement('div');
+    const submitButton = form.querySelector('button[type="submit"]');
+    const kartingExperienceInput = document.getElementById('kartingExperience') || { addEventListener: () => {} };
+    const experienceDescriptionField = document.getElementById('experienceDescriptionField') || { style: {} };
+    const experienceDescriptionInput = document.getElementById('experienceDescription') || { required: false, value: '' };
+    const periodCards = document.querySelectorAll('.period-card');
+
+    // ... (todo o restante do JS do Calendar.html, igual ao arquivo original, até a chamada init())
+
+    function getServiceIcon(serviceName, position) { /* ... */ }
+    function renderServiceOptions() { /* ... */ }
+    function setFeedback(target, type, message) { /* ... */ }
+    function isGithubPagesHost() { /* ... */ }
+    function normalizeApiBase(value) { /* ... */ }
+    function getConfiguredApiBase() { /* ... */ }
+    function getApiCandidates() { /* ... */ }
+    function apiUrl(path) { /* ... */ }
+    async function fetchWithTimeout(url, options = {}, timeoutMs = API_REQUEST_TIMEOUT_MS) { /* ... */ }
+    async function canReachApi(base) { /* ... */ }
+    async function resolveApiBase() { /* ... */ }
+    async function ensureApiBase(force = false) { /* ... */ }
+    async function fetchWithApi(path, options) { /* ... */ }
+    function rebuildPeriodIndex() { /* ... */ }
+    function getPeriodCapacity(date, period) { /* ... */ }
+    function periodKey(date, period) { /* ... */ }
+    function rebuildBlockedIndex(entries) { /* ... */ }
+    function isBlocked(date, period) { /* ... */ }
+    function isPeriodEnabled(period) { /* ... */ }
+    function countPeriodReservations(date, period) { /* ... */ }
+    function isDayFullyBooked(date) { /* ... */ }
+    function createDotsHtml(occupiedCount, total, blocked, selectedPreview = false) { /* ... */ }
+    function getDaysInMonth(year, month) { /* ... */ }
+    function isValidDateString(date) { /* ... */ }
+    async function readApiError(response, fallbackMessage) { /* ... */ }
+    function toUserMessage(error, fallbackMessage) { /* ... */ }
+    async function loadReservas() { /* ... */ }
+    async function loadDisponibilidade() { /* ... */ }
+    async function loadCapacidade() { /* ... */ }
+    async function loadServiceVisibilityConfig() { /* ... */ }
+    async function loadPeriodVisibilityConfig() { /* ... */ }
+    function applyServiceVisibilityConfig(config) { /* ... */ }
+    function applyPeriodVisibilityConfig(config) { /* ... */ }
+    async function saveReserva(reserva) { /* ... */ }
+    async function buildReservationFeedback(reserva, saveResult) { /* ... */ }
+    function updatePeriodOptions() { /* ... */ }
+    function updatePeriodVisibility() { /* ... */ }
+    function getDayButtonContent(day, dateValue) { /* ... */ }
+    function selectDay(dateValue) { /* ... */ }
+    function renderCalendar() { /* ... */ }
+    function renderMonthButtons() { /* ... */ }
+    function formatDateUs(dateValue) { /* ... */ }
+    function renderSelectedInfo() { /* ... */ }
+    function isValidEmailAddress(value) { /* ... */ }
+    function validateReserva(reserva) { /* ... */ }
+    function toggleExperienceDescriptionField() { /* ... */ }
+    function resetFormState() { /* ... */ }
+    async function handleSubmit(event) { /* ... */ }
+    function bindEvents() { /* ... */ }
+    function refreshCalendarUi() { /* ... */ }
+    async function init() {
+      applyServiceVisibilityConfig({
+        allServices: DEFAULT_SERVICES,
+        enabledServices: DEFAULT_SERVICES
+      });
+      applyPeriodVisibilityConfig({
+        enabledPeriods: bookingPeriods.map(item => item.value)
+      });
+      refreshCalendarUi();
+      bindEvents();
+      toggleExperienceDescriptionField();
+
+      setFeedback(formFeedback, 'info', 'Conectando ao servidor...');
+
+      try {
+        const hasApi = await ensureApiBase(false);
+        if (!hasApi) {
+          throw new Error('API_UNAVAILABLE');
+        }
+        const [reservas, disponibilidade, capacidade, serviceConfig, periodConfig] = await Promise.all([
+          loadReservas(),
+          loadDisponibilidade(),
+          loadCapacidade(),
+          loadServiceVisibilityConfig(),
+          loadPeriodVisibilityConfig()
+        ]);
+
+        state.reservas = reservas;
+        state.capacidade = capacidade;
+        rebuildPeriodIndex();
+        rebuildBlockedIndex(disponibilidade);
+        applyServiceVisibilityConfig(serviceConfig);
+        applyPeriodVisibilityConfig(periodConfig);
+        refreshCalendarUi();
+        setFeedback(formFeedback, 'info', '');
+      } catch (error) {
+        setFeedback(formFeedback, 'error', toUserMessage(error, 'Erro ao carregar reservas.'));
+      }
+    }
+
+    init();
 </script>
 </body>
 </html>
