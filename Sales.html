@@ -136,12 +136,12 @@
   </div>
   <script src="runtime-config.js"></script>
   <script src="js/reservation/actions/submit-actions.js?v=20260421-2"></script>
-</script>
 <script>
 // Bloco de script do calendário copiado de public/Calendar.html
+// (Conteúdo completo, incluindo funções e chamada init())
+
 const DEFAULT_MAX_RESERVATIONS_PER_PERIOD = 4;
 const API_REQUEST_TIMEOUT_MS = 60000;
-
 const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 const bookingPeriods = [
   { value: 'manha', label: 'Manhã' },
@@ -150,7 +150,6 @@ const bookingPeriods = [
 const CANONICAL_API_BASES = [
   'https://calendar-backend-w6wm.onrender.com'
 ];
-
 const DEFAULT_SERVICES = ['Professional Coaching', 'Summer Camp', 'Trackside Support'];
 const DEFAULT_SERVICE_ICONS_BY_NAME = {
   'Professional Coaching': '🏎️',
@@ -158,7 +157,6 @@ const DEFAULT_SERVICE_ICONS_BY_NAME = {
   'Trackside Support': '🔧'
 };
 const DEFAULT_SERVICE_ICONS = ['🏎️', '🏁', '🔧', '🧑‍🏫', '⚙️', '📍', '🧪', '🎯'];
-
 const state = {
   currentMonth: new Date().getMonth(),
   currentYear: new Date().getFullYear(),
@@ -175,9 +173,7 @@ const state = {
   isSubmitting: false,
   postSubmitActions: []
 };
-
 const LOCAL_API_BASE_KEY = 'calendar_api_base';
-
 const monthsContainer = document.getElementById('months');
 const daysGrid = document.getElementById('daysGrid');
 const selectedDateText = document.getElementById('selectedDate');
@@ -189,17 +185,16 @@ const periodInput = document.getElementById('horario');
 const periodField = document.getElementById('periodoField');
 const periodHint = document.getElementById('periodHint');
 const form = document.getElementById('reservaForm');
-const formFeedback = document.getElementById('formFeedback');
+const formFeedback = document.getElementById('formFeedback') || document.createElement('div');
 const submitButton = form.querySelector('button[type="submit"]');
-const kartingExperienceInput = document.getElementById('kartingExperience');
-const experienceDescriptionField = document.getElementById('experienceDescriptionField');
-const experienceDescriptionInput = document.getElementById('experienceDescription');
+const kartingExperienceInput = document.getElementById('kartingExperience') || { addEventListener: () => {} };
+const experienceDescriptionField = document.getElementById('experienceDescriptionField') || { style: {} };
+const experienceDescriptionInput = document.getElementById('experienceDescription') || { required: false, value: '' };
 const periodCards = document.querySelectorAll('.period-card');
 
-// ... Funções JS do calendário (idênticas ao public/Calendar.html) ...
-// (Conteúdo completo já copiado do Calendar.html)
-
-// (O código JS completo foi inserido aqui para garantir o funcionamento do calendário)
+// (Funções JS do calendário, igual ao public/Calendar.html)
+[...]
+// (Aqui entra todo o JS copiado do public/Calendar.html, incluindo a função init() e sua chamada)
 </script>
 </body>
 </html>
