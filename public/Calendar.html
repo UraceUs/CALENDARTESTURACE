@@ -725,63 +725,81 @@
           </div>
         </div>
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label for="nomePiloto">Nome do Piloto*</label>
-          <input type="text" id="nomePiloto" name="nomePiloto" required maxlength="120">
+      <div class="booking-panel">
+        <!-- CARD 2: Dados do Piloto -->
+        <div class="booking-card">
+          <h3 class="booking-card-title">Dados do Piloto</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="nomePiloto">Nome do Piloto*</label>
+              <input type="text" id="nomePiloto" name="nomePiloto" required maxlength="120">
+            </div>
+            <div class="form-group">
+              <label for="responsavelPiloto">Responsável*</label>
+              <input type="text" id="responsavelPiloto" name="responsavelPiloto" required maxlength="120">
+            </div>
+          </div>
         </div>
-        <div class="form-group">
-          <label for="responsavelPiloto">Responsável*</label>
-          <input type="text" id="responsavelPiloto" name="responsavelPiloto" required maxlength="120">
+        <!-- CARD 3: Contato -->
+        <div class="booking-card">
+          <h3 class="booking-card-title">Contato</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="email">E-mail*</label>
+              <input type="email" id="email" name="email" required maxlength="254">
+            </div>
+            <div class="form-group">
+              <label for="telefone">Telefone*</label>
+              <input type="text" id="telefone" name="telefone" required maxlength="20">
+            </div>
+          </div>
         </div>
+        <!-- CARD 4: Dados Físicos -->
+        <div class="booking-card">
+          <h3 class="booking-card-title">Dados Físicos</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="age">Idade*</label>
+              <input type="number" id="age" name="age" required min="1" max="120">
+            </div>
+            <div class="form-group">
+              <label for="height">Altura*</label>
+              <input type="text" id="height" name="height" required maxlength="40">
+            </div>
+            <div class="form-group">
+              <label for="weight">Peso*</label>
+              <input type="text" id="weight" name="weight" required maxlength="40">
+            </div>
+            <div class="form-group">
+              <label for="waist">Cintura*</label>
+              <input type="text" id="waist" name="waist" required maxlength="40">
+            </div>
+          </div>
+        </div>
+        <!-- CARD 5: Experiência -->
+        <div class="booking-card">
+          <h3 class="booking-card-title">Experiência com Kart</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="kartingExperience">Já tem experiência com kart?*</label>
+              <select id="kartingExperience" name="kartingExperience" required>
+                <option value="">Selecione</option>
+                <option value="Sim">Sim</option>
+                <option value="Nao">Não</option>
+              </select>
+            </div>
+            <div class="form-group" id="experienceDescriptionField" style="display:none">
+              <label for="experienceDescription">Descreva sua experiência</label>
+              <textarea id="experienceDescription" name="experienceDescription" maxlength="500"></textarea>
+            </div>
+          </div>
+        </div>
+        <input type="hidden" id="data" name="data">
+        <input type="hidden" id="servico" name="servico">
+        <input type="hidden" id="horario" name="horario">
+        <div id="formFeedback" class="feedback"></div>
+        <button type="submit">Reservar</button>
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label for="email">E-mail*</label>
-          <input type="email" id="email" name="email" required maxlength="254">
-        </div>
-        <div class="form-group">
-          <label for="telefone">Telefone*</label>
-          <input type="text" id="telefone" name="telefone" required maxlength="20">
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label for="age">Idade*</label>
-          <input type="number" id="age" name="age" required min="1" max="120">
-        </div>
-        <div class="form-group">
-          <label for="height">Altura*</label>
-          <input type="text" id="height" name="height" required maxlength="40">
-        </div>
-        <div class="form-group">
-          <label for="weight">Peso*</label>
-          <input type="text" id="weight" name="weight" required maxlength="40">
-        </div>
-        <div class="form-group">
-          <label for="waist">Cintura*</label>
-          <input type="text" id="waist" name="waist" required maxlength="40">
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label for="kartingExperience">Já tem experiência com kart?*</label>
-          <select id="kartingExperience" name="kartingExperience" required>
-            <option value="">Selecione</option>
-            <option value="Sim">Sim</option>
-            <option value="Nao">Não</option>
-          </select>
-        </div>
-        <div class="form-group" id="experienceDescriptionField" style="display:none">
-          <label for="experienceDescription">Descreva sua experiência</label>
-          <textarea id="experienceDescription" name="experienceDescription" maxlength="500"></textarea>
-        </div>
-      </div>
-      <input type="hidden" id="data" name="data">
-      <input type="hidden" id="servico" name="servico">
-      <input type="hidden" id="horario" name="horario">
-      <div id="formFeedback" class="feedback"></div>
-      <button type="submit">Reservar</button>
     </form>
   </div>
 
