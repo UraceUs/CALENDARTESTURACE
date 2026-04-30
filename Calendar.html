@@ -35,7 +35,103 @@
   </style>
 </head>
 <body>
-  <!-- Conteúdo do calendário real deve ser inserido aqui, igual ao public/Calendar.html -->
-  <!-- ...existing code from public/Calendar.html... -->
+  <header class="site-topbar">
+    <div class="topbar-left">
+      <span class="menu-icon">☰</span>
+    </div>
+    <svg class="topbar-logo" viewBox="0 0 740 170" role="img" aria-label="Logo URACE" xmlns="http://www.w3.org/2000/svg">
+      <rect width="740" height="170" fill="none"/>
+      <text x="8" y="125" font-family="Sora, sans-serif" font-size="124" font-weight="800" fill="#e1121b" letter-spacing="3">URACE</text>
+      <circle cx="170" cy="78" r="22" fill="#1726f5"/>
+    </svg>
+    <div class="topbar-right">
+      <a class="topbar-link" href="#reservaForm">Fale conosco</a>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="hero-copy">
+      <p class="hero-kicker">Drive your Dream</p>
+      <h2 class="hero-title">Experiências de Alta Performance na URace</h2>
+      <p class="hero-text">
+        Entre no universo da performance real e descubra o que significa operar no limite com controle, técnica e mentalidade de piloto.
+
+Na URace, cada experiência é construída como uma imersão completa no mundo do kartismo profissional. Mais do que uma atividade, é uma jornada de aprendizado e superação dentro da pista, onde cada volta revela evolução.
+
+Aqui, você não apenas dirige você entende o que é performance. Trabalhamos foco, tomada de decisão sob pressão, controle emocional e precisão, tudo em um ambiente seguro e guiado por profissionais experientes. 
+      </p>
+      <a class="hero-cta" href="#reservaForm">Preencha abaixo</a>
+    </div>
+  </section>
+
+  <div class="page">
+    <div class="header">
+      <div class="brand-wrap">
+        <svg class="logo-mark" viewBox="0 0 740 170" role="img" aria-label="Logo URACE" xmlns="http://www.w3.org/2000/svg">
+          <rect width="740" height="170" fill="none"/>
+          <text x="8" y="125" font-family="Sora, sans-serif" font-size="124" font-weight="800" fill="#e1121b" letter-spacing="3">URACE</text>
+          <circle cx="170" cy="78" r="22" fill="#1726f5"/>
+        </svg>
+        <h1>Reserve seu serviço</h1>
+      </div>
+      <div class="months" id="months"></div>
+    </div>
+
+    <form id="reservaForm">
+      <div class="layout">
+        <div class="calendar-panel">
+          <div class="week-days">
+            <div>SEG</div>
+            <div>TER</div>
+            <div>QUA</div>
+            <div>QUI</div>
+            <div>SEX</div>
+            <div>SÁB</div>
+            <div>DOM</div>
+          </div>
+          <div class="days-grid" id="daysGrid"></div>
+          <div class="selected-date" id="selectedDate">Clique em um dia para escolher a data*</div>
+        </div>
+
+        <div class="booking-panel">
+          <!-- CARD 1: Período + Serviço -->
+          <div class="booking-card">
+            <h3 class="booking-card-title">Selecione a sessão</h3>
+            <div id="periodoField">
+              <label class="section-label">Período</label>
+              <div class="period-options" id="periodOptions">
+                <button type="button" class="period-card" data-period="manha">
+                  <span class="period-icon">🌅</span>
+                  <span class="period-name">Manhã</span>
+                  <span class="period-count"></span>
+                </button>
+                <button type="button" class="period-card" data-period="tarde">
+                  <span class="period-icon">🌇</span>
+                  <span class="period-name">Tarde</span>
+                  <span class="period-count"></span>
+                </button>
+              </div>
+              <input type="hidden" id="horario" name="horario" required />
+            </div>
+            <p class="feedback info" id="periodHint" aria-live="polite"></p>
+
+            <label class="section-label">Serviço</label>
+            <div class="service-options" id="serviceOptions"></div>
+            <p class="feedback info" id="serviceHint" aria-live="polite"></p>
+            <input type="hidden" id="servico" name="servico" required />
+            <input type="hidden" id="data" required />
+          </div>
+        </div>
+      </div>
+
+      <!-- ...cards de contato e driver removidos, mantendo apenas calendário e sessão... -->
+    </form>
+  </div>
+
+  <script src="./runtime-config.js"></script>
+  <script src="./js/reservation/actions/submit-actions.js?v=20260421-2"></script>
+  <script>
+    // ...código JS igual ao public/Calendar.html...
+  </script>
 </body>
 </html>
