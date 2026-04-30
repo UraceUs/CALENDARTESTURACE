@@ -592,6 +592,7 @@
     }
 
     @media(max-width: 1280px) {
+
       .hero {
         grid-template-columns: 1fr;
         min-height: auto;
@@ -600,10 +601,6 @@
 
       .hero-copy {
         max-width: 100%;
-      }
-
-         padding: 42px 22px 64px;
-        padding: 0 14px;
       }
 
       .page {
@@ -778,6 +775,83 @@ Aqui, você não apenas dirige você entende o que é performance. Trabalhamos f
 
   <script src="./runtime-config.js"></script>
   <script src="./js/reservation/actions/submit-actions.js?v=20260421-2"></script>
+  <form id="reservaForm" autocomplete="off">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="nomePiloto">Nome do Piloto*</label>
+        <input type="text" id="nomePiloto" name="nomePiloto" required maxlength="120">
+      </div>
+      <div class="form-group">
+        <label for="responsavelPiloto">Responsável*</label>
+        <input type="text" id="responsavelPiloto" name="responsavelPiloto" required maxlength="120">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="email">E-mail*</label>
+        <input type="email" id="email" name="email" required maxlength="254">
+      </div>
+      <div class="form-group">
+        <label for="telefone">Telefone*</label>
+        <input type="text" id="telefone" name="telefone" required maxlength="20">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="age">Idade*</label>
+        <input type="number" id="age" name="age" required min="1" max="120">
+      </div>
+      <div class="form-group">
+        <label for="height">Altura*</label>
+        <input type="text" id="height" name="height" required maxlength="40">
+      </div>
+      <div class="form-group">
+        <label for="weight">Peso*</label>
+        <input type="text" id="weight" name="weight" required maxlength="40">
+      </div>
+      <div class="form-group">
+        <label for="waist">Cintura*</label>
+        <input type="text" id="waist" name="waist" required maxlength="40">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="kartingExperience">Já tem experiência com kart?*</label>
+        <select id="kartingExperience" name="kartingExperience" required>
+          <option value="">Selecione</option>
+          <option value="Sim">Sim</option>
+          <option value="Nao">Não</option>
+        </select>
+      </div>
+      <div class="form-group" id="experienceDescriptionField" style="display:none">
+        <label for="experienceDescription">Descreva sua experiência</label>
+        <textarea id="experienceDescription" name="experienceDescription" maxlength="500"></textarea>
+      </div>
+    </div>
+    <input type="hidden" id="data" name="data">
+    <input type="hidden" id="servico" name="servico">
+    <input type="hidden" id="horario" name="horario">
+    <div id="formFeedback" class="feedback"></div>
+    <button type="submit">Reservar</button>
+  </form>
+  <div id="months" class="months-toolbar"></div>
+  <div id="daysGrid" class="calendar-grid"></div>
+  <div id="selectedDate" class="selected-date-text">Clique em um dia para escolher a data*</div>
+  <div id="serviceOptions" class="service-options"></div>
+  <div id="serviceHint" class="feedback info"></div>
+  <div id="periodoField" class="periodo-field">
+    <div class="period-cards">
+      <button type="button" class="period-card" data-period="manha">
+        <span class="period-label">Manhã</span>
+        <span class="period-count"></span>
+      </button>
+      <button type="button" class="period-card" data-period="tarde">
+        <span class="period-label">Tarde</span>
+        <span class="period-count"></span>
+      </button>
+    </div>
+    <div id="periodHint" class="feedback info"></div>
+  </div>
   <script>
     const DEFAULT_MAX_RESERVATIONS_PER_PERIOD = 4;
     const API_REQUEST_TIMEOUT_MS = 60000;
