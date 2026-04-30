@@ -12,24 +12,154 @@
     .menu-icon { color: #cad3ea; font-size: 1.05rem; font-weight: 700; }
     .topbar-logo { width: 112px; height: auto; display: block; }
     .topbar-link { color: #e6ebf8; font-size: 0.78rem; text-decoration: none; border: 1px solid rgba(255,255,255,0.3); border-radius: 999px; padding: 7px 14px; font-weight: 600; }
-    .page { width: min(98vw, 900px); margin: 40px auto 0; padding: 0 22px 22px; position: relative; z-index: 2; }
-    .header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; border: 1px solid #273353; background: #0f1a36; border-radius: 14px; padding: 14px 16px; }
-    .header h1 { font-size: 1.2rem; margin: 0; font-weight: 800; letter-spacing: 0.01em; color: #f5f7ff; }
-    .brand-wrap { display: flex; align-items: center; gap: 12px; min-width: 0; }
-    .logo-mark { width: 190px; height: auto; flex: 0 0 auto; display: block; }
-    .cards-row { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 22px; align-items: start; }
-    .booking-card { background: linear-gradient(180deg, #181e2e 0%, #232c47 100%); border: 1px solid #c8d0e0; border-radius: 14px; padding: 18px; box-shadow: 0 18px 34px rgba(2,8,26,0.26); }
-    .booking-card-title { font-size: 0.82rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: #fff; margin: 0 0 14px; padding-bottom: 10px; border-bottom: 1px solid #c4d0f0; }
-    .booking-card label { display: block; font-size: 0.95rem; margin-bottom: 10px; font-weight: 700; }
-    .booking-card input, .booking-card select, .booking-card textarea, .booking-card button[type="submit"] { width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid #c8d0e0; font-size: 0.95rem; margin-top: 6px; background: #232c47; color: #fff; font-family: inherit; transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease; }
-    .booking-card button[type="submit"] { background: #fff; color: #101624; border: none; margin-top: 16px; cursor: pointer; transition: opacity 0.2s ease, transform 0.2s ease; font-weight: 700; letter-spacing: 0.01em; }
-    .booking-card button[type="submit"]:hover { background: #15245a; color: #fff; transform: translateY(-1px); }
-    .booking-card button[type="submit"]:disabled { opacity: 0.6; cursor: not-allowed; }
-    .feedback { margin-top: 12px; font-size: 0.9rem; min-height: 1.2em; }
+    .page {
+      width: min(98vw, 900px);
+      margin: 40px auto 0;
+      padding: 0 22px 22px;
+      position: relative;
+      z-index: 2;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+      border: 1px solid #273353;
+      background: #0f1a36;
+      border-radius: 14px;
+      padding: 14px 16px;
+    }
+    .header h1 {
+      font-size: 1.2rem;
+      margin: 0;
+      font-weight: 800;
+      letter-spacing: 0.01em;
+      color: #f5f7ff;
+    }
+    .brand-wrap {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+    .logo-mark {
+      width: 190px;
+      height: auto;
+      flex: 0 0 auto;
+      display: block;
+    }
+    .cards-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 32px;
+      margin-top: 32px;
+      justify-content: center;
+      align-items: stretch;
+    }
+    .booking-card {
+      background: linear-gradient(180deg, #181e2e 0%, #232c47 100%);
+      border: 1px solid #c8d0e0;
+      border-radius: 14px;
+      padding: 28px 24px 24px 24px;
+      box-shadow: 0 18px 34px rgba(2,8,26,0.26);
+      min-width: 320px;
+      max-width: 400px;
+      flex: 1 1 340px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      align-items: stretch;
+    }
+    .booking-card-title {
+      font-size: 1.05rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #fff;
+      margin: 0 0 18px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #c4d0f0;
+      text-align: center;
+    }
+    .booking-card label {
+      display: flex;
+      flex-direction: column;
+      font-size: 1rem;
+      margin-bottom: 16px;
+      font-weight: 600;
+      gap: 6px;
+    }
+    .booking-card input,
+    .booking-card select,
+    .booking-card textarea {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid #c8d0e0;
+      font-size: 1rem;
+      margin-top: 0;
+      background: #232c47;
+      color: #fff;
+      font-family: inherit;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+      box-sizing: border-box;
+    }
+    .booking-card button[type="submit"] {
+      background: #fff;
+      color: #101624;
+      border: none;
+      margin-top: 18px;
+      cursor: pointer;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      border-radius: 10px;
+      font-size: 1.05rem;
+      padding: 14px 0;
+    }
+    .booking-card button[type="submit"]:hover {
+      background: #15245a;
+      color: #fff;
+      transform: translateY(-1px);
+    }
+    .booking-card button[type="submit"]:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .feedback {
+      margin-top: 12px;
+      font-size: 0.98rem;
+      min-height: 1.2em;
+      text-align: center;
+    }
     .feedback.info { color: #2a2a2a; }
     .feedback.success { color: #116b32; }
     .feedback.error { color: #ff2f3e; }
-    @media(max-width: 900px) { .cards-row { grid-template-columns: 1fr; } }
+    @media(max-width: 900px) {
+      .cards-row {
+        flex-direction: column;
+        gap: 22px;
+        align-items: center;
+      }
+      .booking-card {
+        min-width: 0;
+        width: 100%;
+        max-width: 480px;
+      }
+    }
+    @media(max-width: 600px) {
+      .booking-card {
+        padding: 16px 6vw;
+        min-width: 0;
+        width: 100%;
+        max-width: 98vw;
+      }
+      .cards-row {
+        gap: 14px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -112,7 +242,7 @@
     const experienceDescriptionInput = document.getElementById('experienceDescription');
     function toggleExperienceDescriptionField() {
       const shouldShow = (kartingExperienceInput.value || '') === 'Sim';
-      experienceDescriptionField.style.display = shouldShow ? 'block' : 'none';
+      experienceDescriptionField.style.display = shouldShow ? 'flex' : 'none';
       experienceDescriptionInput.required = shouldShow;
       if (!shouldShow) {
         experienceDescriptionInput.value = '';
