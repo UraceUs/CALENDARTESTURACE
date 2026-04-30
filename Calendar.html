@@ -3,64 +3,39 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>URACE | Redirecionando</title>
+  <title>URACE | Reserve seu serviço</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;800&display=swap');
-
+    @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap');
     :root {
-      --bg: #ededf0;
-      --card: #ffffff;
-      --line: #d8dce4;
-      --brand: #1f2f6f;
-      --brand-strong: #162353;
-      --text: #181b25;
-      --muted: #636b79;
+      --bg: #06080d;
+      --panel: #f4f6fb;
+      --border: #c8d0e0;
+      --accent: #FFF;
+      --accent-strong: #162353;
+      --accent-soft: #dfe6ff;
+      --danger: #ff2f3e;
+      --danger-soft: #ffe9ec;
+      --text: #fff;
+      --muted: #5e6778;
+      --hero-glass: rgba(255, 255, 255, 0.12);
     }
-
     * { box-sizing: border-box; }
-
     body {
       margin: 0;
       min-height: 100vh;
-      display: grid;
-      place-items: center;
-      padding: 20px;
       font-family: 'Sora', 'Trebuchet MS', sans-serif;
+      background:
+        linear-gradient(135deg, rgba(225, 36, 48, 0.06), transparent 26%),
+        linear-gradient(315deg, rgba(31, 47, 111, 0.06), transparent 32%),
+        url('/public/bg-calendar.jpg') center center / cover no-repeat,
+        var(--bg);
       color: var(--text);
-        background: var(--bg);
     }
-
-    .redirect-card {
-      width: 100%;
-      max-width: 520px;
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      background: var(--card);
-      padding: 22px;
-      box-shadow: 0 14px 30px rgba(20, 26, 49, 0.06);
-      text-align: center;
-    }
-
-    h1 {
-      margin: 0 0 8px;
-      font-size: 1.08rem;
-      color: var(--brand-strong);
-      font-weight: 800;
-    }
-
-    p {
-      margin: 0;
-      color: var(--muted);
-      font-size: 0.92rem;
-      font-weight: 600;
-    }
+    /* ...demais estilos iguais ao public/Calendar.html... */
   </style>
-  <!-- Redirecionamento removido para funcionar apenas no GitHub Pages -->
 </head>
 <body>
-  <div class="redirect-card">
-    <h1>URACE</h1>
-    <p>Redirecionando para o calendário...</p>
-  </div>
+  <!-- Conteúdo do calendário real deve ser inserido aqui, igual ao public/Calendar.html -->
+  <!-- ...existing code from public/Calendar.html... -->
 </body>
 </html>
