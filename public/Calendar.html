@@ -591,6 +591,24 @@
       color: var(--danger);
     }
 
+    .form-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .form-group label {
+      margin-bottom: 4px;
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: #c8d4f0;
+    }
+
     @media(max-width: 1280px) {
 
       .hero {
@@ -681,7 +699,11 @@
 </head>
 <body>
 
-  <div class="calendar-root">
+  <div class="page">
+    <div class="header">
+      <h1>Reserva de Serviço</h1>
+      <div class="months" id="months"></div>
+    </div>
     <form id="reservaForm" autocomplete="off">
       <div class="layout">
         <div class="calendar-panel">
