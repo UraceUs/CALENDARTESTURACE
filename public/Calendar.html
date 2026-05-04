@@ -747,81 +747,8 @@
           </div>
         </div>
       </div>
-      <div class="booking-panel">
-        <!-- CARD 2: Dados do Piloto -->
-        <div class="booking-card">
-          <h3 class="booking-card-title">Dados do Piloto</h3>
-          <div class="form-row">
-            <div class="form-group">
-              <label for="nomePiloto">Nome do Piloto*</label>
-              <input type="text" id="nomePiloto" name="nomePiloto" required maxlength="120">
-            </div>
-            <div class="form-group">
-              <label for="responsavelPiloto">Responsável*</label>
-              <input type="text" id="responsavelPiloto" name="responsavelPiloto" required maxlength="120">
-            </div>
-          </div>
-        </div>
-        <!-- CARD 3: Contato -->
-        <div class="booking-card">
-          <h3 class="booking-card-title">Contato</h3>
-          <div class="form-row">
-            <div class="form-group">
-              <label for="email">E-mail*</label>
-              <input type="email" id="email" name="email" required maxlength="254">
-            </div>
-            <div class="form-group">
-              <label for="telefone">Telefone*</label>
-              <input type="text" id="telefone" name="telefone" required maxlength="20">
-            </div>
-          </div>
-        </div>
-        <!-- CARD 4: Dados Físicos -->
-        <div class="booking-card">
-          <h3 class="booking-card-title">Dados Físicos</h3>
-          <div class="form-row">
-            <div class="form-group">
-              <label for="age">Idade*</label>
-              <input type="number" id="age" name="age" required min="1" max="120">
-            </div>
-            <div class="form-group">
-              <label for="height">Altura*</label>
-              <input type="text" id="height" name="height" required maxlength="40">
-            </div>
-            <div class="form-group">
-              <label for="weight">Peso*</label>
-              <input type="text" id="weight" name="weight" required maxlength="40">
-            </div>
-            <div class="form-group">
-              <label for="waist">Cintura*</label>
-              <input type="text" id="waist" name="waist" required maxlength="40">
-            </div>
-          </div>
-        </div>
-        <!-- CARD 5: Experiência -->
-        <div class="booking-card">
-          <h3 class="booking-card-title">Experiência com Kart</h3>
-          <div class="form-row">
-            <div class="form-group">
-              <label for="kartingExperience">Já tem experiência com kart?*</label>
-              <select id="kartingExperience" name="kartingExperience" required>
-                <option value="">Selecione</option>
-                <option value="Sim">Sim</option>
-                <option value="Nao">Não</option>
-              </select>
-            </div>
-            <div class="form-group" id="experienceDescriptionField" style="display:none">
-              <label for="experienceDescription">Descreva sua experiência</label>
-              <textarea id="experienceDescription" name="experienceDescription" maxlength="500"></textarea>
-            </div>
-          </div>
-        </div>
-        <input type="hidden" id="data" name="data">
-        <input type="hidden" id="servico" name="servico">
-        <input type="hidden" id="horario" name="horario">
-        <div id="formFeedback" class="feedback"></div>
-        <button type="submit">Reservar</button>
-      </div>
+      <div id="formFeedback" class="feedback"></div>
+      <button type="submit" style="width:100%;padding:14px;margin-top:14px;border-radius:10px;border:none;background:#e12430;color:#fff;font-size:1rem;font-weight:700;cursor:pointer;">Reservar</button>
     </form>
   </div>
 
@@ -880,9 +807,6 @@
     const form = document.getElementById('reservaForm');
     const formFeedback = document.getElementById('formFeedback');
     const submitButton = form.querySelector('button[type="submit"]');
-    const kartingExperienceInput = document.getElementById('kartingExperience');
-    const experienceDescriptionField = document.getElementById('experienceDescriptionField');
-    const experienceDescriptionInput = document.getElementById('experienceDescription');
     const periodCards = document.querySelectorAll('.period-card');
 
     function getServiceIcon(serviceName, position) {
@@ -1592,68 +1516,23 @@
 
     function validateReserva(reserva) {
       const errors = [];
-      const phoneRegex = /^[0-9()+\-\s]{8,20}$/;
 
-      if (!reserva.nomePiloto || reserva.nomePiloto.length < 2 || reserva.nomePiloto.length > 120) {
-        errors.push('Informe o nome do piloto (2-120 caracteres).');
-      }
-      if (!reserva.responsavelPiloto || reserva.responsavelPiloto.length < 2 || reserva.responsavelPiloto.length > 120) {
-        errors.push('Informe o nome do responsável (2-120 caracteres).');
-      }
       if (!state.allServices.includes(reserva.servico)) {
-        errors.push('Selecione um servico valido.');
+        errors.push('Selecione um serviço.');
       }
       if (reserva.servico && !state.enabledServices.has(reserva.servico)) {
-        errors.push('Este servico nao esta disponivel no momento.');
+        errors.push('Este serviço não está disponível no momento.');
       }
       if (!isValidDateString(reserva.data)) {
-        errors.push('Selecione uma data valida no calendario.');
+        errors.push('Selecione uma data válida no calendário.');
       }
       if (!bookingPeriods.some(item => item.value === reserva.periodo)) {
         errors.push('Escolha Manhã ou Tarde.');
       }
       if (reserva.periodo && !state.enabledPeriods.has(reserva.periodo)) {
-        errors.push('Este periodo nao esta disponivel no momento.');
-      }
-      if (!isValidEmailAddress(reserva.email || '')) {
-        errors.push('Informe um e-mail valido.');
-      }
-      if (!phoneRegex.test(reserva.telefone || '')) {
-        errors.push('Informe um telefone valido (8-20 caracteres).');
-      }
-      const ageNumber = Number.parseInt(reserva.age, 10);
-      if (!Number.isInteger(ageNumber) || ageNumber < 1 || ageNumber > 120) {
-        errors.push('Informe a idade do driver (1-120).');
-      }
-      if (!reserva.height || reserva.height.length < 2 || reserva.height.length > 40) {
-        errors.push('Informe a height do driver.');
-      }
-      if (!reserva.weight || reserva.weight.length < 2 || reserva.weight.length > 40) {
-        errors.push('Informe a weight do driver.');
-      }
-      if (!reserva.waist || reserva.waist.length < 1 || reserva.waist.length > 40) {
-        errors.push('Informe a waist do driver.');
-      }
-      if (!['Sim', 'Nao'].includes(reserva.kartingExperience || '')) {
-        errors.push('Informe se o driver ja tem experiencia com kart (Sim ou Nao).');
-      }
-      if ((reserva.kartingExperience || '') === 'Sim') {
-        const description = (reserva.experienceDescription || '').trim();
-        if (description.length < 5 || description.length > 500) {
-          errors.push('Descreva sua experiencia (5-500 caracteres) quando marcar Sim.');
-        }
+        errors.push('Este período não está disponível no momento.');
       }
       return errors;
-    }
-
-    function toggleExperienceDescriptionField() {
-      const shouldShow = (kartingExperienceInput.value || '') === 'Sim';
-      experienceDescriptionField.style.display = shouldShow ? 'block' : 'none';
-      experienceDescriptionInput.required = shouldShow;
-
-      if (!shouldShow) {
-        experienceDescriptionInput.value = '';
-      }
     }
 
     function resetFormState() {
@@ -1664,7 +1543,6 @@
       state.selectedDay = null;
       Array.from(serviceOptions.querySelectorAll('.service-card')).forEach(card => card.classList.remove('active'));
       periodCards.forEach(card => card.classList.remove('active'));
-      toggleExperienceDescriptionField();
       renderSelectedInfo();
       renderCalendar();
       updatePeriodOptions();
@@ -1678,28 +1556,12 @@
       }
 
       const reserva = {
-        nomePiloto: document.getElementById('nomePiloto').value.trim(),
-        responsavelPiloto: document.getElementById('responsavelPiloto').value.trim(),
         servico: serviceInput.value,
         data: dataInput.value,
-        periodo: periodInput.value,
-        email: document.getElementById('email').value.trim(),
-        telefone: document.getElementById('telefone').value.trim(),
-        age: document.getElementById('age').value.trim(),
-        height: document.getElementById('height').value.trim(),
-        weight: document.getElementById('weight').value.trim(),
-        waist: document.getElementById('waist').value.trim(),
-        kartingExperience: document.getElementById('kartingExperience').value.trim(),
-        experienceDescription: document.getElementById('experienceDescription').value.trim()
+        periodo: periodInput.value
       };
 
       reserva.serviceDatesForMonth = `${formatDateUs(reserva.data)} | ${bookingPeriods.find(item => item.value === reserva.periodo)?.label || reserva.periodo}`;
-
-      // Compatibilidade com visualizações antigas do painel admin.
-      reserva.nome = reserva.nomePiloto;
-
-      // Compatibilidade com instancias antigas da API que ainda exigem o campo "contato".
-      reserva.contato = `${reserva.nomePiloto} | ${reserva.responsavelPiloto}`;
 
       const validationErrors = validateReserva(reserva);
       if (validationErrors.length > 0) {
@@ -1770,8 +1632,6 @@
         });
       });
 
-      kartingExperienceInput.addEventListener('change', toggleExperienceDescriptionField);
-
       form.addEventListener('submit', handleSubmit);
     }
 
@@ -1794,7 +1654,6 @@
       });
       refreshCalendarUi();
       bindEvents();
-      toggleExperienceDescriptionField();
 
       setFeedback(formFeedback, 'info', 'Conectando ao servidor...');
 
