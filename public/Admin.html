@@ -20,9 +20,7 @@
       --danger: #e12430;
       --danger-soft: #ffe9ec;
       --success: #0d6a3a;
-    }    git add public/img/M15A8255.jpg
-    git commit -m "fix: reenviar imagem M15A8255.jpg"
-    git push
+    }
     * { box-sizing: border-box; }
 
     body {
@@ -528,6 +526,54 @@
 
     .btn-trash:hover {
       background: #ffe9ed;
+    }
+
+    .btn-info {
+      width: auto;
+      min-width: 44px;
+      padding: 8px 10px;
+      border: 1px solid #b8c3e7;
+      border-radius: 8px;
+      background: #eff4ff;
+      color: var(--brand-strong);
+      font-weight: 700;
+      font-size: 1rem;
+      line-height: 1;
+    }
+
+    .btn-info:hover {
+      background: #e4ecff;
+    }
+
+    .briefing-status {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 5px 10px;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      font-weight: 700;
+      border: 1px solid #d0d6e7;
+      background: #f6f8fe;
+      color: #44506d;
+    }
+
+    .briefing-status.complete {
+      background: #eafaf1;
+      border-color: #9cd9b8;
+      color: #0d6a3a;
+    }
+
+    .briefing-status.half {
+      background: #fff8e8;
+      border-color: #f0d388;
+      color: #7b5d0b;
+    }
+
+    .briefing-status.incomplete {
+      background: #fff0f1;
+      border-color: #f5a0a5;
+      color: #9b2232;
     }
 
     .btn-mail {
@@ -1127,9 +1173,12 @@
                 <th style="width:36px;"><input type="checkbox" id="selectAllCheckbox" title="Selecionar todos"></th>
                 <th>Piloto</th>
                 <th>Responsável</th>
+                <th>Pit ID</th>
                 <th>Serviço</th>
                 <th>Reserva Atual</th>
+                <th>Etapa</th>
                 <th>Contato</th>
+                <th title="Informações" aria-label="Informações">Info</th>
                 <th title="Reenviar E-mails" aria-label="Reenviar E-mails">Status</th>
                 <th title="Excluir" aria-label="Excluir">Delete</th>
               </tr>
@@ -2530,6 +2579,88 @@
         .trim();
     }
 
+    function normalizePitId(value) {
+      return String(value || '')
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^A-Z0-9-_]/g, '');
+    }
+
+    function loadLocalBriefingCache() {
+      try {
+        const raw = localStorage.getItem('calendar_briefing_cache');
+        const parsed = raw ? JSON.parse(raw) : {};
+        return parsed && typeof parsed === 'object' ? parsed : {};
+      } catch (error) {
+        return {};
+      }
+    }
+
+    function mergeLocalBriefingData(reservas) {
+      const cache = loadLocalBriefingCache();
+      return (Array.isArray(reservas) ? reservas : []).map(item => {
+        const pitId = normalizePitId(item && item.pitId);
+        const cached = pitId ? cache[pitId] : null;
+        if (!cached || typeof cached !== 'object') {
+          return item;
+        }
+        return {
+          ...item,
+          ...cached
+        };
+      });
+    }
+
+    function computeReservationStage(reserva) {
+      const explicit = Number(reserva && reserva.bookingProgress);
+      if (Number.isFinite(explicit)) {
+        if (explicit >= 100) {
+          return { label: 'Completa', cssClass: 'complete' };
+        }
+        if (explicit >= 50) {
+          return { label: '50%', cssClass: 'half' };
+        }
+        return { label: 'Incompleta', cssClass: 'incomplete' };
+      }
+
+      const hasStage1 = Boolean(reserva && reserva.pitId && reserva.data && reserva.periodo && reserva.servico);
+      const hasDriverBriefing = Boolean(
+        reserva &&
+        reserva.nomePiloto &&
+        reserva.responsavelPiloto &&
+        reserva.email &&
+        reserva.telefone &&
+        reserva.age &&
+        reserva.height &&
+        reserva.weight &&
+        reserva.waist
+      );
+
+      if (hasStage1 && hasDriverBriefing) {
+        return { label: 'Completa', cssClass: 'complete' };
+      }
+      if (hasStage1) {
+        return { label: '50%', cssClass: 'half' };
+      }
+      return { label: 'Incompleta', cssClass: 'incomplete' };
+    }
+
+    function showQuickReservationInfo(reserva) {
+      const lines = [
+        `Pit ID: ${reserva.pitId || '-'}`,
+        `Data: ${formatDateForSummary(reserva.data || '')}`,
+        `Periodo: ${formatPeriod(reserva.periodo || '')}`,
+        `Servico: ${reserva.servico || '-'}`,
+        `Piloto: ${reserva.nomePiloto || reserva.nome || '-'}`,
+        `Responsavel: ${reserva.responsavelPiloto || reserva.nomeResponsavel || reserva.responsavel || '-'}`,
+        `Contato: ${reserva.contato || [reserva.email, reserva.telefone].filter(Boolean).join(' | ') || '-'}`,
+        `Idade/Altura/Peso/Cintura: ${reserva.age || '-'} / ${reserva.height || '-'} / ${reserva.weight || '-'} / ${reserva.waist || '-'}`,
+        `Experiencia no kart: ${reserva.kartingExperience || '-'}${reserva.experienceDescription ? ` (${reserva.experienceDescription})` : ''}`
+      ];
+      window.alert(lines.join('\n'));
+    }
+
     function clearCalendarDateSelection() {
       if (!state.selectedDates.length) {
         return;
@@ -2651,7 +2782,7 @@
       if (state.reservas.length === 0) {
         const row = document.createElement('tr');
         const cell = document.createElement('td');
-        cell.colSpan = 8;
+        cell.colSpan = 10;
         cell.textContent = 'Nenhuma reserva cadastrada.';
         row.appendChild(cell);
         reservationTableBody.appendChild(row);
@@ -2672,10 +2803,11 @@
         ? sorted.filter(reserva => {
           const piloto = reserva.nomePiloto || reserva.nome || '';
           const responsavel = reserva.responsavelPiloto || reserva.nomeResponsavel || reserva.responsavel || '';
+          const pitId = reserva.pitId || '';
           const servico = reserva.servico || '';
           const reservaAtual = `${formatDateForSummary(reserva.data)} - ${formatPeriod(reserva.periodo)}`;
           const contato = reserva.contato || [reserva.email, reserva.telefone].filter(Boolean).join(' | ');
-          const haystack = normalizeSearchText([piloto, responsavel, servico, reservaAtual, contato].join(' '));
+          const haystack = normalizeSearchText([piloto, responsavel, pitId, servico, reservaAtual, contato].join(' '));
           return haystack.includes(normalizedQuery);
         })
         : sorted;
@@ -2683,7 +2815,7 @@
       if (filtered.length === 0) {
         const row = document.createElement('tr');
         const cell = document.createElement('td');
-        cell.colSpan = 8;
+        cell.colSpan = 10;
         cell.textContent = 'Nenhuma reserva encontrada para esta pesquisa.';
         row.appendChild(cell);
         reservationTableBody.appendChild(row);
@@ -2717,14 +2849,35 @@
         const responsavelCell = document.createElement('td');
         responsavelCell.textContent = reserva.responsavelPiloto || reserva.nomeResponsavel || reserva.responsavel || '';
 
+        const pitIdCell = document.createElement('td');
+        pitIdCell.textContent = reserva.pitId || '-';
+
         const serviceCell = document.createElement('td');
         serviceCell.textContent = reserva.servico;
 
         const currentCell = document.createElement('td');
         currentCell.textContent = `${formatDateForSummary(reserva.data)} - ${formatPeriod(reserva.periodo)}`;
 
+        const stageCell = document.createElement('td');
+        const stage = computeReservationStage(reserva);
+        const stageBadge = document.createElement('span');
+        stageBadge.className = `briefing-status ${stage.cssClass}`;
+        stageBadge.textContent = stage.label;
+        stageCell.appendChild(stageBadge);
+
         const contatoCell = document.createElement('td');
         contatoCell.textContent = reserva.contato || [reserva.email, reserva.telefone].filter(Boolean).join(' | ');
+
+        const infoCell = document.createElement('td');
+        const infoBtn = document.createElement('button');
+        infoBtn.type = 'button';
+        infoBtn.className = 'btn-info';
+        infoBtn.title = 'Ver informações preenchidas';
+        infoBtn.textContent = 'i';
+        infoBtn.addEventListener('click', () => {
+          showQuickReservationInfo(reserva);
+        });
+        infoCell.appendChild(infoBtn);
 
         const resendCell = document.createElement('td');
         const resendWrap = document.createElement('div');
@@ -2828,9 +2981,12 @@
         row.appendChild(checkCell);
         row.appendChild(pilotoCell);
         row.appendChild(responsavelCell);
+        row.appendChild(pitIdCell);
         row.appendChild(serviceCell);
         row.appendChild(currentCell);
+        row.appendChild(stageCell);
         row.appendChild(contatoCell);
+        row.appendChild(infoCell);
         row.appendChild(resendCell);
         row.appendChild(deleteCell);
 
@@ -2849,7 +3005,7 @@
         fetchPeriodVisibilityConfig()
       ]);
 
-      state.reservas = reservas;
+      state.reservas = mergeLocalBriefingData(reservas);
       state.disponibilidade = disponibilidade;
       state.capacidade = capacidade;
       state.allServices = Array.isArray(serviceConfig.allServices) ? serviceConfig.allServices : [];

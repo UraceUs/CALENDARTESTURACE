@@ -192,6 +192,19 @@
         <!-- CARD 2: Informações de contato -->
         <div class="booking-card">
           <h3 class="booking-card-title">Informações de contato</h3>
+          <label>Pit ID
+            <input type="text" id="pitId" required maxlength="24" placeholder="Ex.: PIT-AB12-XY34" />
+          </label>
+          <p class="feedback" id="pitIdFeedback" aria-live="polite"></p>
+          <label>Data da reserva
+            <input type="text" id="reservaData" readonly />
+          </label>
+          <label>Período da reserva
+            <input type="text" id="reservaPeriodo" readonly />
+          </label>
+          <label>Serviço da reserva
+            <input type="text" id="reservaServico" readonly />
+          </label>
           <label>Nome do piloto
             <input type="text" id="nomePiloto" required />
           </label>
@@ -236,10 +249,399 @@
       </div>
     </form>
   </div>
+  <script src="./public/runtime-config.js"></script>
   <script>
+    const API_REQUEST_TIMEOUT_MS = 60000;
+    const LOCAL_API_BASE_KEY = 'calendar_api_base';
+    const CANONICAL_API_BASES = [
+      'https://calendar-backend-w6wm.onrender.com'
+    ];
+
+    const state = {
+      apiBase: '',
+      selectedReserva: null,
+      isSubmitting: false
+    };
+
+    const form = document.getElementById('briefingForm');
+    const formFeedback = document.getElementById('formFeedback');
+    const pitIdInput = document.getElementById('pitId');
+    const pitIdFeedback = document.getElementById('pitIdFeedback');
+    const reservaDataInput = document.getElementById('reservaData');
+    const reservaPeriodoInput = document.getElementById('reservaPeriodo');
+    const reservaServicoInput = document.getElementById('reservaServico');
+    const nomePilotoInput = document.getElementById('nomePiloto');
+    const responsavelInput = document.getElementById('responsavelPiloto');
+    const emailInput = document.getElementById('email');
+    const telefoneInput = document.getElementById('telefone');
+    const ageInput = document.getElementById('age');
+    const heightInput = document.getElementById('height');
+    const weightInput = document.getElementById('weight');
+    const waistInput = document.getElementById('waist');
     const kartingExperienceInput = document.getElementById('kartingExperience');
     const experienceDescriptionField = document.getElementById('experienceDescriptionField');
     const experienceDescriptionInput = document.getElementById('experienceDescription');
+
+    function setFeedback(target, type, message) {
+      target.className = `feedback ${type}`;
+      target.textContent = message || '';
+    }
+
+    function normalizePitId(value) {
+      return String(value || '')
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^A-Z0-9-_]/g, '');
+    }
+
+    function normalizeApiBase(value) {
+      if (!value || typeof value !== 'string') {
+        return '';
+      }
+
+      const trimmed = value.trim().replace(/\/$/, '');
+      if (!trimmed) {
+        return '';
+      }
+
+      if (!/^https?:\/\//i.test(trimmed)) {
+        return '';
+      }
+
+      try {
+        const parsed = new URL(trimmed);
+        const hostname = (parsed.hostname || '').toLowerCase();
+        const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1';
+        if (isLocalHost) {
+          return '';
+        }
+      } catch (error) {
+        return '';
+      }
+
+      return trimmed;
+    }
+
+    function getConfiguredApiBase() {
+      try {
+        const params = new URLSearchParams(window.location.search || '');
+        const paramApiBase = normalizeApiBase(params.get('apiBase') || '');
+        if (paramApiBase) {
+          localStorage.setItem(LOCAL_API_BASE_KEY, paramApiBase);
+          return paramApiBase;
+        }
+      } catch (error) {
+        console.error('Falha ao ler apiBase da URL:', error);
+      }
+
+      const windowApiBase = normalizeApiBase(window.CALENDAR_API_BASE || '');
+      if (windowApiBase) {
+        return windowApiBase;
+      }
+
+      try {
+        const storedApiBase = normalizeApiBase(localStorage.getItem(LOCAL_API_BASE_KEY) || '');
+        if (storedApiBase) {
+          return storedApiBase;
+        }
+      } catch (error) {
+        console.error('Falha ao ler apiBase salvo:', error);
+      }
+
+      return '';
+    }
+
+    function getApiCandidates() {
+      const candidates = [];
+      const configuredApiBase = getConfiguredApiBase();
+      if (configuredApiBase) {
+        candidates.push(configuredApiBase);
+      }
+
+      CANONICAL_API_BASES.forEach(base => {
+        const normalized = normalizeApiBase(base);
+        if (normalized) {
+          candidates.push(normalized);
+        }
+      });
+
+      return [...new Set(candidates)];
+    }
+
+    async function canReachApi(base) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 7000);
+        const response = await fetch(`${base}/api/reservas`, {
+          method: 'GET',
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        return response && typeof response.status === 'number';
+      } catch (error) {
+        return false;
+      }
+    }
+
+    async function resolveApiBase() {
+      const candidates = getApiCandidates();
+      for (const base of candidates) {
+        const reachable = await canReachApi(base);
+        if (reachable) {
+          state.apiBase = base;
+          return true;
+        }
+      }
+
+      if (candidates.length > 0) {
+        state.apiBase = candidates[0];
+        return true;
+      }
+
+      state.apiBase = '';
+      return false;
+    }
+
+    async function ensureApiBase(force = false) {
+      if (state.apiBase && !force) {
+        return true;
+      }
+      return await resolveApiBase();
+    }
+
+    async function fetchWithTimeout(url, options = {}, timeoutMs = API_REQUEST_TIMEOUT_MS) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+      try {
+        return await fetch(url, {
+          ...options,
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+
+    async function fetchWithApi(path, options) {
+      const hasApi = await ensureApiBase(false);
+      if (!hasApi) {
+        throw new Error('API_UNAVAILABLE');
+      }
+
+      try {
+        return await fetchWithTimeout(`${state.apiBase}${path}`, options);
+      } catch (error) {
+        if (error && error.name === 'TypeError') {
+          const recovered = await ensureApiBase(true);
+          if (!recovered) {
+            throw new Error('API_UNAVAILABLE');
+          }
+          return await fetchWithTimeout(`${state.apiBase}${path}`, options);
+        }
+        if (error && error.name === 'AbortError') {
+          throw new Error('API_REQUEST_TIMEOUT');
+        }
+        throw error;
+      }
+    }
+
+    async function parseApiError(response, fallbackMessage) {
+      try {
+        const body = await response.json();
+        if (body && body.error && Array.isArray(body.error.details) && body.error.details.length > 0) {
+          return body.error.details[0];
+        }
+        if (body && body.error && body.error.message) {
+          return body.error.message;
+        }
+      } catch (error) {
+        console.error('Falha ao parsear erro da API:', error);
+      }
+      return fallbackMessage;
+    }
+
+    function formatDateBr(dateValue) {
+      const match = String(dateValue || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!match) {
+        return dateValue || '';
+      }
+      return `${match[3]}/${match[2]}/${match[1]}`;
+    }
+
+    function periodLabel(value) {
+      if (value === 'manha') {
+        return 'Manhã';
+      }
+      if (value === 'tarde') {
+        return 'Tarde';
+      }
+      return value || '';
+    }
+
+    function clearReservationContext() {
+      state.selectedReserva = null;
+      reservaDataInput.value = '';
+      reservaPeriodoInput.value = '';
+      reservaServicoInput.value = '';
+    }
+
+    function applyReservationContext(reserva) {
+      state.selectedReserva = reserva;
+      reservaDataInput.value = formatDateBr(reserva.data || '');
+      reservaPeriodoInput.value = periodLabel(reserva.periodo || '');
+      reservaServicoInput.value = reserva.servico || '';
+
+      if (!nomePilotoInput.value && (reserva.nomePiloto || reserva.nome)) {
+        nomePilotoInput.value = reserva.nomePiloto || reserva.nome || '';
+      }
+      if (!responsavelInput.value && (reserva.responsavelPiloto || reserva.nomeResponsavel || reserva.responsavel)) {
+        responsavelInput.value = reserva.responsavelPiloto || reserva.nomeResponsavel || reserva.responsavel || '';
+      }
+      if (!emailInput.value && reserva.email) {
+        emailInput.value = reserva.email;
+      }
+      if (!telefoneInput.value && reserva.telefone) {
+        telefoneInput.value = reserva.telefone;
+      }
+    }
+
+    async function loadReservaByPitId(pitId) {
+      const response = await fetchWithApi('/api/reservas');
+      if (!response.ok) {
+        throw new Error(await parseApiError(response, 'Nao foi possivel carregar reservas.'));
+      }
+
+      const reservas = await response.json();
+      const normalized = normalizePitId(pitId);
+      if (!Array.isArray(reservas)) {
+        return null;
+      }
+
+      return reservas.find(item => normalizePitId(item && item.pitId) === normalized) || null;
+    }
+
+    async function tryUpdateBriefing(reservaId, payload) {
+      const attempts = [
+        { method: 'PATCH', path: `/api/reservas/pit/${encodeURIComponent(payload.pitId)}`, body: { ...payload, etapa: 2 } },
+        { method: 'PATCH', path: `/api/reservas/${encodeURIComponent(reservaId)}` },
+        { method: 'PUT', path: `/api/reservas/${encodeURIComponent(reservaId)}` },
+        { method: 'POST', path: `/api/reservas/${encodeURIComponent(reservaId)}/briefing` },
+        { method: 'PUT', path: `/api/reservas/${encodeURIComponent(reservaId)}/briefing` }
+      ];
+
+      let lastMessage = 'Falha ao atualizar briefing na API.';
+      for (const attempt of attempts) {
+        const response = await fetchWithApi(attempt.path, {
+          method: attempt.method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(attempt.body || payload)
+        });
+
+        if (response.ok) {
+          return true;
+        }
+
+        lastMessage = await parseApiError(response, lastMessage);
+        if (response.status >= 500) {
+          break;
+        }
+      }
+
+      throw new Error(lastMessage);
+    }
+
+    function saveBriefingFallback(pitId, payload) {
+      const key = 'calendar_briefing_cache';
+      const cacheRaw = localStorage.getItem(key);
+      const cache = cacheRaw ? JSON.parse(cacheRaw) : {};
+      cache[pitId] = {
+        ...payload,
+        updatedAt: new Date().toISOString()
+      };
+      localStorage.setItem(key, JSON.stringify(cache));
+    }
+
+    async function onPitIdChange() {
+      const normalized = normalizePitId(pitIdInput.value);
+      pitIdInput.value = normalized;
+
+      if (!normalized) {
+        clearReservationContext();
+        setFeedback(pitIdFeedback, 'error', 'Informe um Pit ID para buscar a reserva da Etapa 1.');
+        return;
+      }
+
+      try {
+        setFeedback(pitIdFeedback, 'info', 'Buscando dados da reserva...');
+        const reserva = await loadReservaByPitId(normalized);
+        if (!reserva) {
+          clearReservationContext();
+          setFeedback(pitIdFeedback, 'error', 'Pit ID nao encontrado. Verifique o codigo da Etapa 1.');
+          return;
+        }
+
+        applyReservationContext(reserva);
+        setFeedback(pitIdFeedback, 'success', 'Reserva localizada. Dados da Etapa 1 preenchidos automaticamente.');
+      } catch (error) {
+        clearReservationContext();
+        setFeedback(pitIdFeedback, 'error', error.message || 'Falha ao buscar reserva por Pit ID.');
+      }
+    }
+
+    async function handleSubmit(event) {
+      event.preventDefault();
+      if (state.isSubmitting) {
+        return;
+      }
+
+      const pitId = normalizePitId(pitIdInput.value);
+      pitIdInput.value = pitId;
+      if (!pitId) {
+        setFeedback(formFeedback, 'error', 'Informe um Pit ID valido antes de enviar.');
+        return;
+      }
+
+      if (!state.selectedReserva || normalizePitId(state.selectedReserva.pitId) !== pitId) {
+        setFeedback(formFeedback, 'error', 'Busque um Pit ID valido da Etapa 1 antes de enviar o briefing.');
+        return;
+      }
+
+      const payload = {
+        pitId,
+        nomePiloto: nomePilotoInput.value.trim(),
+        nome: nomePilotoInput.value.trim(),
+        responsavelPiloto: responsavelInput.value.trim(),
+        email: emailInput.value.trim(),
+        telefone: telefoneInput.value.trim(),
+        age: ageInput.value.trim(),
+        height: heightInput.value.trim(),
+        weight: weightInput.value.trim(),
+        waist: waistInput.value.trim(),
+        kartingExperience: kartingExperienceInput.value,
+        experienceDescription: experienceDescriptionInput.value.trim(),
+        bookingProgress: 100,
+        bookingStageStatus: 'completa'
+      };
+
+      try {
+        state.isSubmitting = true;
+        setFeedback(formFeedback, 'info', 'Enviando briefing...');
+        await tryUpdateBriefing(state.selectedReserva.id, payload);
+        setFeedback(formFeedback, 'success', 'Briefing enviado e vinculado ao mesmo Pit ID com sucesso.');
+      } catch (error) {
+        saveBriefingFallback(pitId, payload);
+        setFeedback(
+          formFeedback,
+          'info',
+          'Briefing salvo localmente para este Pit ID. A API atual nao possui rota de atualizacao completa nesta etapa.'
+        );
+      } finally {
+        state.isSubmitting = false;
+      }
+    }
+
     function toggleExperienceDescriptionField() {
       const shouldShow = (kartingExperienceInput.value || '') === 'Sim';
       experienceDescriptionField.style.display = shouldShow ? 'flex' : 'none';
@@ -249,7 +651,17 @@
       }
     }
     kartingExperienceInput.addEventListener('change', toggleExperienceDescriptionField);
+    pitIdInput.addEventListener('blur', onPitIdChange);
+    pitIdInput.addEventListener('change', onPitIdChange);
+    form.addEventListener('submit', handleSubmit);
     toggleExperienceDescriptionField();
+
+    (async () => {
+      const hasApi = await ensureApiBase(false);
+      if (!hasApi) {
+        setFeedback(formFeedback, 'error', 'API indisponivel. Use ?apiBase=https://seu-backend para concluir o briefing.');
+      }
+    })();
   </script>
 </body>
 </html>

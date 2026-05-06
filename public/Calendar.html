@@ -742,6 +742,9 @@
             <label class="section-label">Serviço</label>
             <div class="service-options" id="serviceOptions"></div>
             <p class="feedback info" id="serviceHint" aria-live="polite"></p>
+            <label class="section-label" for="pitId">Pit ID</label>
+            <input type="text" id="pitId" name="pitId" maxlength="24" placeholder="Gerado automaticamente" required />
+            <p class="feedback info" id="pitIdHint" aria-live="polite"></p>
             <input type="hidden" id="servico" name="servico" required />
             <input type="hidden" id="data" required />
           </div>
@@ -757,6 +760,8 @@
   <script>
     const DEFAULT_MAX_RESERVATIONS_PER_PERIOD = 4;
     const API_REQUEST_TIMEOUT_MS = 60000;
+    const PIT_ID_PREFIX = 'PIT';
+    const PIT_ID_RANDOM_LENGTH = 6;
 
     const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const bookingPeriods = [
@@ -804,10 +809,60 @@
     const periodInput = document.getElementById('horario');
     const periodField = document.getElementById('periodoField');
     const periodHint = document.getElementById('periodHint');
+    const pitIdInput = document.getElementById('pitId');
+    const pitIdHint = document.getElementById('pitIdHint');
     const form = document.getElementById('reservaForm');
     const formFeedback = document.getElementById('formFeedback');
     const submitButton = form.querySelector('button[type="submit"]');
     const periodCards = document.querySelectorAll('.period-card');
+
+    function normalizePitId(value) {
+      return String(value || '')
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^A-Z0-9-_]/g, '');
+    }
+
+    function generatePitId() {
+      const timestamp = Date.now().toString(36).toUpperCase();
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let random = '';
+
+      for (let i = 0; i < PIT_ID_RANDOM_LENGTH; i += 1) {
+        random += chars[Math.floor(Math.random() * chars.length)];
+      }
+
+      return `${PIT_ID_PREFIX}-${timestamp.slice(-4)}-${random}`;
+    }
+
+    function ensurePitId() {
+      const normalized = normalizePitId(pitIdInput.value);
+      if (normalized) {
+        pitIdInput.value = normalized;
+        return normalized;
+      }
+
+      const generated = generatePitId();
+      pitIdInput.value = generated;
+      return generated;
+    }
+
+    function updatePitIdHint() {
+      const date = dataInput.value;
+      const period = periodInput.value;
+      const service = serviceInput.value;
+
+      if (!date || !period || !service) {
+        pitIdHint.textContent = 'Este Pit ID ficara vinculado a data, periodo e servico ao concluir a reserva.';
+        pitIdHint.className = 'feedback info';
+        return;
+      }
+
+      const periodLabel = bookingPeriods.find(item => item.value === period)?.label || period;
+      pitIdHint.textContent = `Vinculo atual: ${formatDateUs(date)} | ${periodLabel} | ${service}`;
+      pitIdHint.className = 'feedback info';
+    }
 
     function getServiceIcon(serviceName, position) {
       const configured = state.serviceIcons && state.serviceIcons[serviceName];
@@ -1277,6 +1332,36 @@
     }
 
     async function saveReserva(reserva) {
+      const pitIdPath = `/api/reservas/pit/${encodeURIComponent(reserva.pitId)}`;
+      const stagePayload = {
+        etapa: 1,
+        pitId: reserva.pitId,
+        data: reserva.data,
+        periodo: reserva.periodo,
+        servico: reserva.servico,
+        bookingProgress: 50,
+        bookingStageStatus: 'incompleta'
+      };
+
+      try {
+        const stageResponse = await fetchWithApi(pitIdPath, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(stagePayload)
+        });
+
+        if (stageResponse.ok) {
+          const stageResult = await stageResponse.json();
+          const stageReserva = (stageResult && stageResult.reserva) || { ...reserva };
+          return {
+            reserva: stageReserva,
+            emailConfirmation: { sent: false, pending: true, reason: 'STAGE_ONLY' }
+          };
+        }
+      } catch (error) {
+        console.warn('Falha ao usar rota por pitId na etapa 1, aplicando fallback legado:', error);
+      }
+
       const response = await fetchWithApi('/api/reservas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1532,6 +1617,9 @@
       if (reserva.periodo && !state.enabledPeriods.has(reserva.periodo)) {
         errors.push('Este período não está disponível no momento.');
       }
+      if (!normalizePitId(reserva.pitId)) {
+        errors.push('Informe um Pit ID valido.');
+      }
       return errors;
     }
 
@@ -1540,6 +1628,7 @@
       serviceInput.value = '';
       periodInput.value = '';
       dataInput.value = '';
+      pitIdInput.value = generatePitId();
       state.selectedDay = null;
       Array.from(serviceOptions.querySelectorAll('.service-card')).forEach(card => card.classList.remove('active'));
       periodCards.forEach(card => card.classList.remove('active'));
@@ -1547,6 +1636,7 @@
       renderCalendar();
       updatePeriodOptions();
       updatePeriodVisibility();
+      updatePitIdHint();
     }
 
     async function handleSubmit(event) {
@@ -1556,9 +1646,17 @@
       }
 
       const reserva = {
+        pitId: ensurePitId(),
         servico: serviceInput.value,
         data: dataInput.value,
-        periodo: periodInput.value
+        periodo: periodInput.value,
+        bookingProgress: 50,
+        bookingStageStatus: 'incompleta',
+        pitContext: {
+          data: dataInput.value,
+          periodo: periodInput.value,
+          servico: serviceInput.value
+        }
       };
 
       reserva.serviceDatesForMonth = `${formatDateUs(reserva.data)} | ${bookingPeriods.find(item => item.value === reserva.periodo)?.label || reserva.periodo}`;
@@ -1616,6 +1714,7 @@
         Array.from(serviceOptions.querySelectorAll('.service-card')).forEach(item => item.classList.remove('active'));
         card.classList.add('active');
         serviceInput.value = card.dataset.service;
+        updatePitIdHint();
         renderCalendar();
       });
 
@@ -1628,8 +1727,17 @@
           card.classList.add('active');
           periodInput.value = card.dataset.period;
           renderSelectedInfo();
+          updatePitIdHint();
           renderCalendar();
         });
+      });
+
+      pitIdInput.addEventListener('blur', () => {
+        pitIdInput.value = ensurePitId();
+      });
+
+      pitIdInput.addEventListener('input', () => {
+        pitIdHint.textContent = '';
       });
 
       form.addEventListener('submit', handleSubmit);
@@ -1641,6 +1749,7 @@
       renderSelectedInfo();
       updatePeriodOptions();
       updatePeriodVisibility();
+      updatePitIdHint();
     }
 
     async function init() {
@@ -1652,6 +1761,7 @@
       applyPeriodVisibilityConfig({
         enabledPeriods: bookingPeriods.map(item => item.value)
       });
+      ensurePitId();
       refreshCalendarUi();
       bindEvents();
 
