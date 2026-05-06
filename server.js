@@ -9,6 +9,9 @@ const { google } = require('googleapis');
 
 const PORT = Number(process.env.PORT || 3000);
 const RESERVAS_COLLECTION = 'reservas';
+const DISPONIBILIDADE_COLLECTION = 'disponibilidade';
+const CAPACIDADE_COLLECTION = 'capacidade';
+const CONFIG_COLLECTION = 'config';
 const ALLOWED_PERIODS = new Set(['manha', 'tarde']);
 const ALLOWED_EXPERIENCE = new Set(['Sim', 'Nao']);
 const DEFAULT_SERVICES = ['Professional Coaching', 'Summer Camp', 'Trackside Support'];
@@ -1077,14 +1080,166 @@ function createFirestoreReservaRepository() {
   };
 }
 
+function createFirestoreConfigRepository() {
+  const db = ensureFirestore();
+  const disponibilidadeCol = db.collection(DISPONIBILIDADE_COLLECTION);
+  const capacidadeCol = db.collection(CAPACIDADE_COLLECTION);
+  const configCol = db.collection(CONFIG_COLLECTION);
+
+  // ── Disponibilidade ──────────────────────────────────────────────────────────
+
+  async function getDisponibilidade() {
+    const snap = await disponibilidadeCol.get();
+    return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  }
+
+  async function saveDisponibilidade({ dataInicial, dataFinal, periodo, bloqueado, data }) {
+    // Support both single date (data) and range (dataInicial/dataFinal)
+    const start = data || dataInicial;
+    const end = data || dataFinal || dataInicial;
+    if (!start || !end) throw new Error('Campo "data" ou "dataInicial"/"dataFinal" obrigatório.');
+
+    const dates = [];
+    let cur = new Date(start + 'T00:00:00Z');
+    const last = new Date(end + 'T00:00:00Z');
+    while (cur <= last) {
+      dates.push(cur.toISOString().slice(0, 10));
+      cur.setUTCDate(cur.getUTCDate() + 1);
+    }
+
+    const allowedPeriods = periodo === 'all' ? ['manha', 'tarde'] : [periodo];
+    const batch = db.batch();
+
+    for (const d of dates) {
+      for (const p of allowedPeriods) {
+        const docId = `${d}_${p}`;
+        const ref = disponibilidadeCol.doc(docId);
+        if (bloqueado) {
+          batch.set(ref, { data: d, periodo: p, bloqueado: true }, { merge: true });
+        } else {
+          batch.delete(ref);
+        }
+      }
+    }
+    await batch.commit();
+    return getDisponibilidade();
+  }
+
+  // ── Capacidade ───────────────────────────────────────────────────────────────
+
+  async function getCapacidade() {
+    const snap = await capacidadeCol.get();
+    return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  }
+
+  async function addCapacidade({ dataInicial, dataFinal, periodo, quantidade, data }) {
+    const start = data || dataInicial;
+    const end = data || dataFinal || dataInicial;
+    if (!start || !end) throw new Error('Campo "data" ou "dataInicial"/"dataFinal" obrigatório.');
+    const vagas = Number(quantidade);
+    if (!Number.isFinite(vagas) || vagas < 1) throw new Error('Campo "quantidade" inválido.');
+
+    const dates = [];
+    let cur = new Date(start + 'T00:00:00Z');
+    const last = new Date(end + 'T00:00:00Z');
+    while (cur <= last) {
+      dates.push(cur.toISOString().slice(0, 10));
+      cur.setUTCDate(cur.getUTCDate() + 1);
+    }
+
+    const allowedPeriods = periodo === 'all' ? ['manha', 'tarde'] : [periodo];
+    const batch = db.batch();
+    for (const d of dates) {
+      for (const p of allowedPeriods) {
+        const docId = `${d}_${p}`;
+        batch.set(capacidadeCol.doc(docId), { data: d, periodo: p, vagas }, { merge: true });
+      }
+    }
+    await batch.commit();
+    return getCapacidade();
+  }
+
+  async function removeCapacidade({ data, periodo }) {
+    if (!data) throw new Error('Campo "data" obrigatório.');
+    const allowedPeriods = periodo === 'all' ? ['manha', 'tarde'] : [periodo];
+    const batch = db.batch();
+    for (const p of allowedPeriods) {
+      batch.delete(capacidadeCol.doc(`${data}_${p}`));
+    }
+    await batch.commit();
+    return getCapacidade();
+  }
+
+  // ── Config ───────────────────────────────────────────────────────────────────
+
+  async function getServicosConfig() {
+    const doc = await configCol.doc('servicos').get();
+    const saved = doc.exists ? (doc.data() || {}) : {};
+    return {
+      allServices: Array.isArray(saved.allServices) && saved.allServices.length > 0
+        ? saved.allServices
+        : [...DEFAULT_SERVICES],
+      enabledServices: Array.isArray(saved.enabledServices) && saved.enabledServices.length > 0
+        ? saved.enabledServices
+        : [...DEFAULT_SERVICES],
+      serviceIcons: saved.serviceIcons && typeof saved.serviceIcons === 'object' ? saved.serviceIcons : {}
+    };
+  }
+
+  async function saveServicosConfig({ allServices, enabledServices, serviceIcons }) {
+    const payload = {
+      allServices: Array.isArray(allServices) ? allServices : [...DEFAULT_SERVICES],
+      enabledServices: Array.isArray(enabledServices) ? enabledServices : [...DEFAULT_SERVICES],
+      serviceIcons: serviceIcons && typeof serviceIcons === 'object' ? serviceIcons : {},
+      updatedAt: new Date().toISOString()
+    };
+    await configCol.doc('servicos').set(payload, { merge: true });
+    return getServicosConfig();
+  }
+
+  async function getPeriodosConfig() {
+    const doc = await configCol.doc('periodos').get();
+    const saved = doc.exists ? (doc.data() || {}) : {};
+    const allPeriods = ['manha', 'tarde'];
+    return {
+      allPeriods,
+      enabledPeriods: Array.isArray(saved.enabledPeriods) && saved.enabledPeriods.length > 0
+        ? saved.enabledPeriods.filter(p => allPeriods.includes(p))
+        : [...allPeriods]
+    };
+  }
+
+  async function savePeriodosConfig({ enabledPeriods }) {
+    const allPeriods = ['manha', 'tarde'];
+    const valid = Array.isArray(enabledPeriods)
+      ? enabledPeriods.filter(p => allPeriods.includes(p))
+      : [...allPeriods];
+    await configCol.doc('periodos').set({ enabledPeriods: valid, updatedAt: new Date().toISOString() }, { merge: true });
+    return getPeriodosConfig();
+  }
+
+  return {
+    getDisponibilidade,
+    saveDisponibilidade,
+    getCapacidade,
+    addCapacidade,
+    removeCapacidade,
+    getServicosConfig,
+    saveServicosConfig,
+    getPeriodosConfig,
+    savePeriodosConfig
+  };
+}
+
 function createApp(options = {}) {
   const repo = options.repo || createFirestoreReservaRepository();
+  const configRepo = options.configRepo || createFirestoreConfigRepository();
   const emailService = options.emailService || createEmailService();
 
   return async function app(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, OPTIONS');
 
     if (req.method === 'OPTIONS') {
       res.statusCode = 204;
@@ -1172,29 +1327,98 @@ function createApp(options = {}) {
     }
 
     if (req.method === 'GET' && requestUrl.pathname === '/api/disponibilidade') {
-      sendJson(res, 200, []);
+      try {
+        sendJson(res, 200, await configRepo.getDisponibilidade());
+      } catch (error) {
+        sendJson(res, 500, { error: { code: 'INTERNAL_ERROR', message: 'Erro ao carregar disponibilidade.', details: [] } });
+      }
       return;
     }
 
     if (req.method === 'GET' && requestUrl.pathname === '/api/capacidade') {
-      sendJson(res, 200, []);
+      try {
+        sendJson(res, 200, await configRepo.getCapacidade());
+      } catch (error) {
+        sendJson(res, 500, { error: { code: 'INTERNAL_ERROR', message: 'Erro ao carregar capacidade.', details: [] } });
+      }
       return;
     }
 
     if (req.method === 'GET' && requestUrl.pathname === '/api/config/servicos') {
-      sendJson(res, 200, {
-        allServices: [...DEFAULT_SERVICES],
-        enabledServices: [...DEFAULT_SERVICES],
-        serviceIcons: {}
-      });
+      try {
+        sendJson(res, 200, await configRepo.getServicosConfig());
+      } catch (error) {
+        sendJson(res, 500, { error: { code: 'INTERNAL_ERROR', message: 'Erro ao carregar config de serviços.', details: [] } });
+      }
       return;
     }
 
     if (req.method === 'GET' && requestUrl.pathname === '/api/config/periodos') {
-      sendJson(res, 200, {
-        allPeriods: ['manha', 'tarde'],
-        enabledPeriods: ['manha', 'tarde']
-      });
+      try {
+        sendJson(res, 200, await configRepo.getPeriodosConfig());
+      } catch (error) {
+        sendJson(res, 500, { error: { code: 'INTERNAL_ERROR', message: 'Erro ao carregar config de períodos.', details: [] } });
+      }
+      return;
+    }
+
+    // POST /api/disponibilidade — bloquear/desbloquear datas
+    if (req.method === 'POST' && requestUrl.pathname === '/api/disponibilidade') {
+      try {
+        const body = await parseJsonBody(req);
+        const updated = await configRepo.saveDisponibilidade(body);
+        sendJson(res, 200, { disponibilidade: updated });
+      } catch (error) {
+        sendJson(res, 400, { error: { code: 'BAD_REQUEST', message: error.message || 'Payload inválido.', details: [] } });
+      }
+      return;
+    }
+
+    // POST /api/capacidade — adicionar ajuste de vagas
+    if (req.method === 'POST' && requestUrl.pathname === '/api/capacidade') {
+      try {
+        const body = await parseJsonBody(req);
+        const updated = await configRepo.addCapacidade(body);
+        sendJson(res, 200, { capacidades: updated });
+      } catch (error) {
+        sendJson(res, 400, { error: { code: 'BAD_REQUEST', message: error.message || 'Payload inválido.', details: [] } });
+      }
+      return;
+    }
+
+    // DELETE /api/capacidade — remover ajuste de vagas por data/periodo
+    if (req.method === 'DELETE' && requestUrl.pathname === '/api/capacidade') {
+      try {
+        const body = await parseJsonBody(req);
+        const updated = await configRepo.removeCapacidade(body);
+        sendJson(res, 200, { capacidades: updated });
+      } catch (error) {
+        sendJson(res, 400, { error: { code: 'BAD_REQUEST', message: error.message || 'Payload inválido.', details: [] } });
+      }
+      return;
+    }
+
+    // POST /api/config/servicos — salvar serviços visíveis
+    if (req.method === 'POST' && requestUrl.pathname === '/api/config/servicos') {
+      try {
+        const body = await parseJsonBody(req);
+        const updated = await configRepo.saveServicosConfig(body);
+        sendJson(res, 200, updated);
+      } catch (error) {
+        sendJson(res, 400, { error: { code: 'BAD_REQUEST', message: error.message || 'Payload inválido.', details: [] } });
+      }
+      return;
+    }
+
+    // POST /api/config/periodos — salvar períodos habilitados
+    if (req.method === 'POST' && requestUrl.pathname === '/api/config/periodos') {
+      try {
+        const body = await parseJsonBody(req);
+        const updated = await configRepo.savePeriodosConfig(body);
+        sendJson(res, 200, updated);
+      } catch (error) {
+        sendJson(res, 400, { error: { code: 'BAD_REQUEST', message: error.message || 'Payload inválido.', details: [] } });
+      }
       return;
     }
 
@@ -1241,6 +1465,43 @@ function createApp(options = {}) {
       return;
     }
 
+    // PUT /api/reservas/:id/move — mover reserva para outra data/período
+    const moveMatch = requestUrl.pathname.match(/^\/api\/reservas\/([^/]+)\/move$/);
+    if (req.method === 'PUT' && moveMatch) {
+      const pitId = normalizePitId(decodeURIComponent(moveMatch[1] || ''));
+      if (!pitId) {
+        sendJson(res, 400, { error: { code: 'INVALID_PIT_ID', message: 'Pit ID inválido.', details: [] } });
+        return;
+      }
+      try {
+        const body = await parseJsonBody(req);
+        const newData = String(body.data || '').trim();
+        const newPeriodo = String(body.periodo || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(newData)) {
+          sendJson(res, 400, { error: { code: 'VALIDATION_ERROR', message: 'Campo "data" inválido (YYYY-MM-DD).', details: [] } });
+          return;
+        }
+        if (!ALLOWED_PERIODS.has(newPeriodo)) {
+          sendJson(res, 400, { error: { code: 'VALIDATION_ERROR', message: 'Campo "periodo" inválido.', details: [] } });
+          return;
+        }
+        const current = await repo.getByPitId(pitId);
+        if (!current || !current.exists) {
+          sendJson(res, 404, { error: { code: 'NOT_FOUND', message: 'Reserva não encontrada.', details: [] } });
+          return;
+        }
+        const now = new Date().toISOString();
+        await current.ref.set({ data: newData, periodo: newPeriodo, updatedAt: now }, { merge: true });
+        const updated = await current.ref.get();
+        const reserva = normalizeReservaRecord(updated.id, updated.data() || {});
+        sendJson(res, 200, { reserva });
+      } catch (error) {
+        console.error('Erro ao mover reserva:', error);
+        sendJson(res, 500, { error: { code: 'INTERNAL_ERROR', message: 'Falha ao mover reserva.', details: [error && error.message ? error.message : 'UNKNOWN'] } });
+      }
+      return;
+    }
+
     const resendMatch = requestUrl.pathname.match(/^\/api\/reservas\/([^/]+)\/resend-confirmation$/);
     if (req.method === 'POST' && resendMatch) {
       const reservaId = decodeURIComponent(resendMatch[1] || '');
@@ -1250,16 +1511,6 @@ function createApp(options = {}) {
         decodedParam: reservaId,
         normalizedPitId: pitId
       });
-      if (!pitId) {
-        sendJson(res, 400, {
-          error: {
-            code: 'INVALID_PIT_ID',
-            message: 'Pit ID invalido para reenvio.',
-            details: []
-          }
-        });
-        return;
-      }
 
       try {
         const found = await repo.getByPitId(pitId);
