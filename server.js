@@ -4,13 +4,13 @@ const http = require('http');
 const { URL } = require('url');
 const admin = require('firebase-admin');
 const nodemailer = require('nodemailer');
+const { google } = require('googleapis');
 
 const PORT = Number(process.env.PORT || 3000);
 const RESERVAS_COLLECTION = 'reservas';
 const ALLOWED_PERIODS = new Set(['manha', 'tarde']);
 const ALLOWED_EXPERIENCE = new Set(['Sim', 'Nao']);
 const DEFAULT_SERVICES = ['Professional Coaching', 'Summer Camp', 'Trackside Support'];
-const TEST_EMAIL_TO = String(process.env.TEST_EMAIL_TO || process.env.SMTP_USER || '').trim();
 
 function formatDateBr(value) {
   const dateMatch = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -26,22 +26,43 @@ function buildSmtpSettingsFromEnv(env = process.env) {
   const secure = String(env.SMTP_SECURE || 'false').toLowerCase() === 'true';
   const user = String(env.SMTP_USER || '').trim();
   const pass = String(env.SMTP_PASS || '').trim();
-  const from = String(env.SMTP_FROM || user).trim();
+  const gmailClientId = String(env.GMAIL_CLIENT_ID || '').trim();
+  const gmailClientSecret = String(env.GMAIL_CLIENT_SECRET || '').trim();
+  const gmailRefreshToken = String(env.GMAIL_REFRESH_TOKEN || '').trim();
+  const gmailFrom = String(env.GMAIL_FROM || '').trim();
+  const hasPasswordAuth = Boolean(user && pass);
+  const hasOAuthAuth = Boolean(gmailClientId && gmailClientSecret && gmailRefreshToken && gmailFrom);
+  const effectiveUser = hasOAuthAuth ? gmailFrom : user;
+  const from = String(env.SMTP_FROM || effectiveUser).trim();
   const replyTo = String(env.SMTP_REPLY_TO || '').trim();
 
-  const configured = Boolean(user && pass && from && host && Number.isFinite(port));
+  const configured = Boolean((hasOAuthAuth || hasPasswordAuth) && from && host && Number.isFinite(port));
+
+  const auth = hasOAuthAuth
+    ? {
+        type: 'OAuth2',
+        user: gmailFrom,
+        clientId: gmailClientId,
+        clientSecret: gmailClientSecret,
+        refreshToken: gmailRefreshToken
+      }
+    : {
+        user,
+        pass
+      };
+
   return {
     configured,
+    hasPasswordAuth,
+    hasOAuthAuth,
+    authMode: hasOAuthAuth ? 'gmail-oauth2' : (hasPasswordAuth ? 'password' : 'none'),
     from,
     replyTo,
     transport: {
       host,
       port,
       secure,
-      auth: {
-        user,
-        pass
-      }
+      auth
     }
   };
 }
@@ -51,34 +72,202 @@ function createEmailService(options = {}) {
   const transporterFactory = options.transporterFactory || nodemailer.createTransport;
   const smtpSettings = buildSmtpSettingsFromEnv(env);
   let transporter = null;
+  let transporterVerifyAttempted = false;
+  let transporterVerifyError = null;
+  let oauthClient = null;
 
-  function logSmtpConfig() {
-    console.log('SMTP CONFIG:', {
+  function getMissingSmtpFields() {
+    const missing = [];
+    if (!smtpSettings.transport.host) {
+      missing.push('SMTP_HOST');
+    }
+    if (!Number.isFinite(smtpSettings.transport.port)) {
+      missing.push('SMTP_PORT');
+    }
+    if (!smtpSettings.from) {
+      missing.push('SMTP_FROM|GMAIL_FROM');
+    }
+
+    if (!smtpSettings.hasPasswordAuth && !smtpSettings.hasOAuthAuth) {
+      const smtpUser = String(env.SMTP_USER || '').trim();
+      const smtpPass = String(env.SMTP_PASS || '').trim();
+      const gmailClientId = String(env.GMAIL_CLIENT_ID || '').trim();
+      const gmailClientSecret = String(env.GMAIL_CLIENT_SECRET || '').trim();
+      const gmailRefreshToken = String(env.GMAIL_REFRESH_TOKEN || '').trim();
+      const gmailFrom = String(env.GMAIL_FROM || '').trim();
+
+      if (smtpUser || smtpPass) {
+        if (!smtpUser) {
+          missing.push('SMTP_USER');
+        }
+        if (!smtpPass) {
+          missing.push('SMTP_PASS');
+        }
+      }
+
+      if (gmailClientId || gmailClientSecret || gmailRefreshToken || gmailFrom) {
+        if (!gmailClientId) {
+          missing.push('GMAIL_CLIENT_ID');
+        }
+        if (!gmailClientSecret) {
+          missing.push('GMAIL_CLIENT_SECRET');
+        }
+        if (!gmailRefreshToken) {
+          missing.push('GMAIL_REFRESH_TOKEN');
+        }
+        if (!gmailFrom) {
+          missing.push('GMAIL_FROM');
+        }
+      }
+
+      if (missing.length === 0) {
+        missing.push('GMAIL_CLIENT_ID+GMAIL_CLIENT_SECRET+GMAIL_REFRESH_TOKEN+GMAIL_FROM');
+      }
+    }
+
+    return missing;
+  }
+
+  function getSmtpStatusSnapshot() {
+    return {
       host: smtpSettings.transport.host,
       port: smtpSettings.transport.port,
-      user: smtpSettings.transport.auth.user ? 'OK' : 'MISSING',
-      pass: smtpSettings.transport.auth.pass ? 'OK' : 'MISSING'
+      authMode: smtpSettings.authMode,
+      user: smtpSettings.transport.auth && smtpSettings.transport.auth.user ? smtpSettings.transport.auth.user : 'MISSING',
+      pass: smtpSettings.hasPasswordAuth ? 'OK' : 'N/A',
+      oauthClientId: smtpSettings.hasOAuthAuth ? 'OK' : (String(env.GMAIL_CLIENT_ID || '').trim() ? 'PARTIAL' : 'MISSING'),
+      oauthClientSecret: smtpSettings.hasOAuthAuth ? 'OK' : (String(env.GMAIL_CLIENT_SECRET || '').trim() ? 'PARTIAL' : 'MISSING'),
+      oauthRefreshToken: smtpSettings.hasOAuthAuth ? 'OK' : (String(env.GMAIL_REFRESH_TOKEN || '').trim() ? 'PARTIAL' : 'MISSING'),
+      configured: smtpSettings.configured,
+      missingFields: getMissingSmtpFields()
+    };
+  }
+
+  function getEmailRuntimeDiagnostics() {
+    return {
+      smtp: getSmtpStatusSnapshot(),
+      envStatus: {
+        GMAIL_CLIENT_ID: String(env.GMAIL_CLIENT_ID || '').trim() ? 'OK' : 'MISSING',
+        GMAIL_CLIENT_SECRET: String(env.GMAIL_CLIENT_SECRET || '').trim() ? 'OK' : 'MISSING',
+        GMAIL_REFRESH_TOKEN: String(env.GMAIL_REFRESH_TOKEN || '').trim() ? 'OK' : 'MISSING',
+        GMAIL_FROM: String(env.GMAIL_FROM || '').trim() ? 'OK' : 'MISSING',
+        SUPPORT_NOTIFICATION_EMAIL: String(env.SUPPORT_NOTIFICATION_EMAIL || '').trim() ? 'OK' : 'MISSING'
+      }
+    };
+  }
+
+  function getOAuthClient() {
+    if (!oauthClient) {
+      oauthClient = new google.auth.OAuth2(
+        smtpSettings.transport.auth.clientId,
+        smtpSettings.transport.auth.clientSecret,
+        'https://developers.google.com/oauthplayground'
+      );
+      oauthClient.setCredentials({
+        refresh_token: smtpSettings.transport.auth.refreshToken
+      });
+    }
+    return oauthClient;
+  }
+
+  async function resolveOAuthAccessToken() {
+    try {
+      const client = getOAuthClient();
+      const accessTokenResult = await client.getAccessToken();
+      const accessToken = typeof accessTokenResult === 'string'
+        ? accessTokenResult
+        : (accessTokenResult && accessTokenResult.token ? accessTokenResult.token : '');
+
+      if (!accessToken) {
+        throw new Error('EMPTY_OAUTH_ACCESS_TOKEN');
+      }
+
+      console.log('DEBUG SMTP: OAuth access token gerado com sucesso.');
+      return accessToken;
+    } catch (error) {
+      console.error('DEBUG SMTP: falha ao gerar OAuth access token:', error);
+      throw error;
+    }
+  }
+
+  async function createTransporterWithDiagnostics() {
+    let transportConfig = smtpSettings.transport;
+    if (smtpSettings.authMode === 'gmail-oauth2') {
+      const accessToken = await resolveOAuthAccessToken();
+      transportConfig = {
+        ...smtpSettings.transport,
+        auth: {
+          ...smtpSettings.transport.auth,
+          accessToken
+        }
+      };
+    }
+
+    const nextTransporter = transporterFactory(transportConfig);
+    console.log('DEBUG SMTP: transporter inicializado:', {
+      host: smtpSettings.transport.host,
+      port: smtpSettings.transport.port,
+      user: smtpSettings.transport.auth.user || 'MISSING',
+      authMode: smtpSettings.authMode
     });
+    return nextTransporter;
+  }
+
+  function logSmtpConfig() {
+    console.log('SMTP CONFIG:', getSmtpStatusSnapshot());
 
     if (/@gmail\.com$/i.test(smtpSettings.transport.auth.user || '')) {
       console.log('DEBUG SMTP: detectado Gmail. Use App Password (senha de app), nao a senha normal da conta.');
     }
   }
 
-  function getTransporter() {
+  async function getTransporter() {
+    if (smtpSettings.authMode === 'gmail-oauth2') {
+      logSmtpConfig();
+      const oauthTransporter = await createTransporterWithDiagnostics();
+      try {
+        await oauthTransporter.verify();
+        console.log('DEBUG SMTP: transporter.verify() OK');
+      } catch (error) {
+        console.error('DEBUG SMTP: transporter.verify() falhou:', error);
+        throw error;
+      }
+      return oauthTransporter;
+    }
+
     if (!transporter) {
       logSmtpConfig();
-      transporter = transporterFactory(smtpSettings.transport);
+      transporter = await createTransporterWithDiagnostics();
     }
+
+    if (!transporterVerifyAttempted) {
+      transporterVerifyAttempted = true;
+      try {
+        await transporter.verify();
+        console.log('DEBUG SMTP: transporter.verify() OK');
+      } catch (error) {
+        transporterVerifyError = error;
+        console.error('DEBUG SMTP: transporter.verify() falhou:', error);
+      }
+    }
+
     return transporter;
   }
 
   async function sendMailWithDiagnostics(mailOptions) {
     const to = mailOptions && mailOptions.to ? mailOptions.to : '';
-    console.log('DEBUG: tentando enviar email para:', to);
+    console.log('DEBUG: tentativa de envio iniciada:', {
+      to,
+      subject: mailOptions && mailOptions.subject ? mailOptions.subject : ''
+    });
 
     try {
-      const info = await getTransporter().sendMail(mailOptions);
+      const smtpTransporter = await getTransporter();
+      if (transporterVerifyError) {
+        console.log('DEBUG SMTP: envio continuara apesar de verify falhar; erro do verify:', transporterVerifyError.message || 'UNKNOWN_VERIFY_ERROR');
+      }
+
+      const info = await smtpTransporter.sendMail(mailOptions);
       console.log('DEBUG: email enviado:', info && info.response ? info.response : 'SEM_RESPONSE');
       return {
         ok: true,
@@ -152,10 +341,21 @@ function createEmailService(options = {}) {
   }
 
   return {
+    getDiagnostics() {
+      return getEmailRuntimeDiagnostics();
+    },
+
     async sendStageTwoConfirmation(reserva) {
       if (!smtpSettings.configured) {
         logSmtpConfig();
-        return { sent: false, reason: 'SMTP_NOT_CONFIGURED' };
+        return {
+          sent: false,
+          reason: 'SMTP_NOT_CONFIGURED',
+          details: {
+            missingFields: getMissingSmtpFields(),
+            smtp: getSmtpStatusSnapshot()
+          }
+        };
       }
 
       if (!reserva || !validateEmail(reserva.email)) {
@@ -182,10 +382,17 @@ function createEmailService(options = {}) {
     async sendTestEmail() {
       if (!smtpSettings.configured) {
         logSmtpConfig();
-        return { sent: false, reason: 'SMTP_NOT_CONFIGURED' };
+        return {
+          sent: false,
+          reason: 'SMTP_NOT_CONFIGURED',
+          details: {
+            missingFields: getMissingSmtpFields(),
+            smtp: getSmtpStatusSnapshot()
+          }
+        };
       }
 
-      const to = TEST_EMAIL_TO;
+      const to = String(env.TEST_EMAIL_TO || env.SUPPORT_NOTIFICATION_EMAIL || env.GMAIL_FROM || env.SMTP_USER || '').trim();
       if (!validateEmail(to)) {
         return { sent: false, reason: 'TEST_EMAIL_TO_INVALID' };
       }
@@ -218,7 +425,14 @@ function createEmailService(options = {}) {
     async sendSupportNotification(reserva) {
       if (!smtpSettings.configured) {
         logSmtpConfig();
-        return { sent: false, reason: 'SMTP_NOT_CONFIGURED' };
+        return {
+          sent: false,
+          reason: 'SMTP_NOT_CONFIGURED',
+          details: {
+            missingFields: getMissingSmtpFields(),
+            smtp: getSmtpStatusSnapshot()
+          }
+        };
       }
 
       const mailOptions = buildSupportMail(reserva || {});
@@ -637,6 +851,9 @@ function createApp(options = {}) {
 
     if (req.method === 'GET' && requestUrl.pathname === '/api/test-email') {
       try {
+        const runtimeDiagnostics = typeof emailService.getDiagnostics === 'function'
+          ? emailService.getDiagnostics()
+          : null;
         const result = await emailService.sendTestEmail();
         if (!result || !result.sent) {
           sendJson(res, 500, {
@@ -644,14 +861,15 @@ function createApp(options = {}) {
             error: {
               code: result && result.reason ? result.reason : 'TEST_EMAIL_FAILED',
               message: 'Falha ao enviar e-mail de teste SMTP.',
-              details: result && result.error ? [result.error] : []
+              details: [
+                ...(result && result.error ? [result.error] : []),
+                ...(result && result.details && Array.isArray(result.details.missingFields)
+                  ? result.details.missingFields.map(item => `MISSING:${item}`)
+                  : [])
+              ]
             },
-            smtp: {
-              host: process.env.SMTP_HOST || 'smtp.gmail.com',
-              port: process.env.SMTP_PORT || '587',
-              user: process.env.SMTP_USER ? 'OK' : 'MISSING',
-              pass: process.env.SMTP_PASS ? 'OK' : 'MISSING'
-            }
+            diagnostics: result && result.details ? result.details : null,
+            runtimeDiagnostics
           });
           return;
         }
@@ -665,12 +883,7 @@ function createApp(options = {}) {
             sentAt: result.sentAt,
             response: result.response || null
           },
-          smtp: {
-            host: process.env.SMTP_HOST || 'smtp.gmail.com',
-            port: process.env.SMTP_PORT || '587',
-            user: process.env.SMTP_USER ? 'OK' : 'MISSING',
-            pass: process.env.SMTP_PASS ? 'OK' : 'MISSING'
-          }
+          runtimeDiagnostics
         });
       } catch (error) {
         console.error('Erro no endpoint /api/test-email:', error);
