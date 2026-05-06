@@ -202,14 +202,20 @@ function createEmailService(options = {}) {
     }
   }
 
-  async function createTransporterWithDiagnostics() {
-    let transportConfig = smtpSettings.transport;
+  async function createTransporterWithDiagnostics(overrides = {}, label = 'primary') {
+    let transportConfig = {
+      ...smtpSettings.transport,
+      ...overrides,
+      auth: {
+        ...(smtpSettings.transport.auth || {})
+      }
+    };
     if (smtpSettings.authMode === 'gmail-oauth2') {
       const accessToken = await resolveOAuthAccessToken();
       transportConfig = {
-        ...smtpSettings.transport,
+        ...transportConfig,
         auth: {
-          ...smtpSettings.transport.auth,
+          ...transportConfig.auth,
           accessToken
         }
       };
@@ -217,10 +223,12 @@ function createEmailService(options = {}) {
 
     const nextTransporter = transporterFactory(transportConfig);
     console.log('DEBUG SMTP: transporter inicializado:', {
+      label,
       host: smtpSettings.transport.host,
-      port: smtpSettings.transport.port,
-      family: smtpSettings.transport.family,
-      user: smtpSettings.transport.auth.user || 'MISSING',
+      port: transportConfig.port,
+      secure: transportConfig.secure,
+      family: transportConfig.family,
+      user: transportConfig.auth && transportConfig.auth.user ? transportConfig.auth.user : 'MISSING',
       authMode: smtpSettings.authMode
     });
     return nextTransporter;
@@ -237,7 +245,7 @@ function createEmailService(options = {}) {
   async function getTransporter() {
     if (smtpSettings.authMode === 'gmail-oauth2') {
       logSmtpConfig();
-      const oauthTransporter = await createTransporterWithDiagnostics();
+      const oauthTransporter = await createTransporterWithDiagnostics({}, 'oauth-primary');
       const verifyStartedAt = Date.now();
       console.log('DEBUG SMTP: iniciando transporter.verify() (oauth2)...');
       try {
@@ -258,7 +266,7 @@ function createEmailService(options = {}) {
 
     if (!transporter) {
       logSmtpConfig();
-      transporter = await createTransporterWithDiagnostics();
+      transporter = await createTransporterWithDiagnostics({}, 'password-primary');
     }
 
     if (!transporterVerifyAttempted) {
@@ -303,6 +311,17 @@ function createEmailService(options = {}) {
       ].some(Boolean);
     };
 
+    const fallbackProfiles = [];
+    if (smtpSettings.transport.port === 587) {
+      fallbackProfiles.push({
+        label: 'fallback-465',
+        overrides: {
+          port: 465,
+          secure: true
+        }
+      });
+    }
+
     let lastError = null;
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
@@ -333,6 +352,47 @@ function createEmailService(options = {}) {
           continue;
         }
         break;
+      }
+    }
+
+    if (lastError && shouldRetry(lastError) && fallbackProfiles.length > 0) {
+      for (const profile of fallbackProfiles) {
+        try {
+          console.log('DEBUG SMTP: tentando fallback de transporte:', profile.label);
+          const fallbackTransporter = await createTransporterWithDiagnostics(profile.overrides, profile.label);
+          try {
+            const verifyStartedAt = Date.now();
+            console.log('DEBUG SMTP: iniciando transporter.verify() (fallback)...');
+            await fallbackTransporter.verify();
+            console.log('DEBUG SMTP: transporter.verify() fallback OK', {
+              label: profile.label,
+              durationMs: Date.now() - verifyStartedAt
+            });
+          } catch (verifyError) {
+            console.error('DEBUG SMTP: transporter.verify() fallback falhou:', {
+              label: profile.label,
+              code: verifyError && verifyError.code ? verifyError.code : 'UNKNOWN',
+              message: verifyError && verifyError.message ? verifyError.message : 'UNKNOWN'
+            });
+          }
+
+          const info = await fallbackTransporter.sendMail(mailOptions);
+          console.log('DEBUG: email enviado via fallback:', {
+            label: profile.label,
+            response: info && info.response ? info.response : 'SEM_RESPONSE'
+          });
+          return {
+            ok: true,
+            info
+          };
+        } catch (fallbackError) {
+          lastError = fallbackError;
+          console.error('DEBUG: erro ao enviar email via fallback:', {
+            label: profile.label,
+            code: fallbackError && fallbackError.code ? fallbackError.code : 'UNKNOWN',
+            message: fallbackError && fallbackError.message ? fallbackError.message : 'UNKNOWN'
+          });
+        }
       }
     }
 

@@ -257,7 +257,7 @@
   </div>
   <script src="./runtime-config.js"></script>
   <script>
-    const API_REQUEST_TIMEOUT_MS = 60000;
+    const API_REQUEST_TIMEOUT_MS = 30000;
     const LOCAL_API_BASE_KEY = 'calendar_api_base';
     const CANONICAL_API_BASES = [
       'https://calendar-backend-w6wm.onrender.com'
@@ -434,21 +434,22 @@
       }
     }
 
-    async function fetchWithApi(path, options) {
+    async function fetchWithApi(path, options = {}) {
+      const { timeoutMs, ...requestOptions } = options || {};
       const hasApi = await ensureApiBase(false);
       if (!hasApi) {
         throw new Error('API_UNAVAILABLE');
       }
 
       try {
-        return await fetchWithTimeout(`${state.apiBase}${path}`, options);
+        return await fetchWithTimeout(`${state.apiBase}${path}`, requestOptions, timeoutMs || API_REQUEST_TIMEOUT_MS);
       } catch (error) {
         if (error && error.name === 'TypeError') {
           const recovered = await ensureApiBase(true);
           if (!recovered) {
             throw new Error('API_UNAVAILABLE');
           }
-          return await fetchWithTimeout(`${state.apiBase}${path}`, options);
+          return await fetchWithTimeout(`${state.apiBase}${path}`, requestOptions, timeoutMs || API_REQUEST_TIMEOUT_MS);
         }
         if (error && error.name === 'AbortError') {
           throw new Error('API_REQUEST_TIMEOUT');
@@ -551,6 +552,7 @@
       for (const attempt of attempts) {
         const response = await fetchWithApi(attempt.path, {
           method: attempt.method,
+          timeoutMs: 20000,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(attempt.body || payload)
         });

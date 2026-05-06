@@ -1193,7 +1193,7 @@
   <script src="./runtime-config.js"></script>
   <script>
     const DEFAULT_MAX_RESERVATIONS_PER_PERIOD = 4;
-    const API_REQUEST_TIMEOUT_MS = 60000;
+    const API_REQUEST_TIMEOUT_MS = 30000;
     const LAYOUT_EDITOR_STORAGE_KEY = 'admin_layout_editor_v1';
 
     const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -1719,21 +1719,22 @@
       return await resolveApiBase();
     }
 
-    async function fetchWithApi(path, options) {
+    async function fetchWithApi(path, options = {}) {
+      const { timeoutMs, ...requestOptions } = options || {};
       const hasApi = await ensureApiBase(false);
       if (!hasApi) {
         throw new Error('API_UNAVAILABLE');
       }
 
       try {
-        return await fetchWithTimeout(apiUrl(path), options);
+        return await fetchWithTimeout(apiUrl(path), requestOptions, timeoutMs || API_REQUEST_TIMEOUT_MS);
       } catch (error) {
         if (error && error.name === 'TypeError') {
           const recovered = await ensureApiBase(true);
           if (!recovered) {
             throw new Error('API_UNAVAILABLE');
           }
-          return await fetchWithTimeout(apiUrl(path), options);
+          return await fetchWithTimeout(apiUrl(path), requestOptions, timeoutMs || API_REQUEST_TIMEOUT_MS);
         }
         if (error && error.name === 'AbortError') {
           throw new Error('API_REQUEST_TIMEOUT');
@@ -2307,7 +2308,8 @@
 
     async function resendReservaConfirmation(id) {
       const response = await fetchWithApi(`/api/reservas/${encodeURIComponent(id)}/resend-confirmation`, {
-        method: 'POST'
+        method: 'POST',
+        timeoutMs: 20000
       });
 
       if (!response.ok) {
