@@ -566,7 +566,13 @@
         }
 
         lastMessage = await parseApiError(response, lastMessage);
-        if (response.status >= 500) {
+        // 404 pode indicar rota legada ausente, entao tentamos o proximo endpoint.
+        if (response.status === 404) {
+          continue;
+        }
+
+        // Para validacao/autorizacao/erros internos, paramos e exibimos o erro real.
+        if (response.status === 400 || response.status === 401 || response.status === 403 || response.status === 422 || response.status >= 500) {
           break;
         }
       }
@@ -676,12 +682,23 @@
 
         setFeedback(formFeedback, 'success', 'Briefing enviado e vinculado ao mesmo Pit ID com sucesso.');
       } catch (error) {
-        saveBriefingFallback(pitId, payload);
-        setFeedback(
-          formFeedback,
-          'info',
-          'Briefing salvo localmente para este Pit ID. A API atual nao possui rota de atualizacao completa nesta etapa.'
-        );
+        const message = String((error && error.message) || 'Falha ao enviar briefing.');
+        const shouldFallback =
+          message === 'API_UNAVAILABLE' ||
+          message === 'API_REQUEST_TIMEOUT' ||
+          /network|failed to fetch|timeout|econn|enotfound/i.test(message);
+
+        if (shouldFallback) {
+          saveBriefingFallback(pitId, payload);
+          setFeedback(
+            formFeedback,
+            'info',
+            'Falha de conexao com a API. Briefing salvo localmente para este Pit ID. Tente reenviar em instantes.'
+          );
+          return;
+        }
+
+        setFeedback(formFeedback, 'error', message);
       } finally {
         state.isSubmitting = false;
       }
