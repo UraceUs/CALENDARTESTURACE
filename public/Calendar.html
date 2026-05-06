@@ -415,6 +415,38 @@
       margin-bottom: 8px;
     }
 
+    .pitid-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .pitid-row #pitId {
+      flex: 1;
+    }
+    .copy-pitid-btn {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #232c47;
+      color: var(--text);
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .copy-pitid-btn:hover {
+      background: #2d3a5e;
+      border-color: #4a6fa5;
+    }
+    .copy-pitid-btn.copied {
+      background: #1a3a2a;
+      border-color: #2ecc71;
+      color: #2ecc71;
+    }
+
     .service-options {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -743,7 +775,12 @@
             <div class="service-options" id="serviceOptions"></div>
             <p class="feedback info" id="serviceHint" aria-live="polite"></p>
             <label class="section-label" for="pitId">Pit ID</label>
-            <input type="text" id="pitId" name="pitId" maxlength="24" placeholder="Gerado automaticamente" required />
+            <div class="pitid-row">
+              <input type="text" id="pitId" name="pitId" maxlength="24" placeholder="Gerado automaticamente" required />
+              <button type="button" id="copyPitIdBtn" class="copy-pitid-btn" title="Copiar Pit ID" aria-label="Copiar Pit ID">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              </button>
+            </div>
             <p class="feedback info" id="pitIdHint" aria-live="polite"></p>
             <input type="hidden" id="servico" name="servico" required />
             <input type="hidden" id="data" required />
@@ -811,9 +848,23 @@
     const periodHint = document.getElementById('periodHint');
     const pitIdInput = document.getElementById('pitId');
     const pitIdHint = document.getElementById('pitIdHint');
+    const copyPitIdBtn = document.getElementById('copyPitIdBtn');
     const form = document.getElementById('reservaForm');
     const formFeedback = document.getElementById('formFeedback');
     const submitButton = form.querySelector('button[type="submit"]');
+
+    copyPitIdBtn.addEventListener('click', function () {
+      const val = pitIdInput.value.trim();
+      if (!val) return;
+      navigator.clipboard.writeText(val).then(function () {
+        copyPitIdBtn.classList.add('copied');
+        copyPitIdBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+        setTimeout(function () {
+          copyPitIdBtn.classList.remove('copied');
+          copyPitIdBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+        }, 1800);
+      });
+    });
     const periodCards = document.querySelectorAll('.period-card');
 
     function normalizePitId(value) {
