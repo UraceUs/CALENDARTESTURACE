@@ -10,6 +10,7 @@ const RESERVAS_COLLECTION = 'reservas';
 const ALLOWED_PERIODS = new Set(['manha', 'tarde']);
 const ALLOWED_EXPERIENCE = new Set(['Sim', 'Nao']);
 const DEFAULT_SERVICES = ['Professional Coaching', 'Summer Camp', 'Trackside Support'];
+const TEST_EMAIL_TO = String(process.env.TEST_EMAIL_TO || process.env.SMTP_USER || '').trim();
 
 function formatDateBr(value) {
   const dateMatch = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -51,11 +52,45 @@ function createEmailService(options = {}) {
   const smtpSettings = buildSmtpSettingsFromEnv(env);
   let transporter = null;
 
+  function logSmtpConfig() {
+    console.log('SMTP CONFIG:', {
+      host: smtpSettings.transport.host,
+      port: smtpSettings.transport.port,
+      user: smtpSettings.transport.auth.user ? 'OK' : 'MISSING',
+      pass: smtpSettings.transport.auth.pass ? 'OK' : 'MISSING'
+    });
+
+    if (/@gmail\.com$/i.test(smtpSettings.transport.auth.user || '')) {
+      console.log('DEBUG SMTP: detectado Gmail. Use App Password (senha de app), nao a senha normal da conta.');
+    }
+  }
+
   function getTransporter() {
     if (!transporter) {
+      logSmtpConfig();
       transporter = transporterFactory(smtpSettings.transport);
     }
     return transporter;
+  }
+
+  async function sendMailWithDiagnostics(mailOptions) {
+    const to = mailOptions && mailOptions.to ? mailOptions.to : '';
+    console.log('DEBUG: tentando enviar email para:', to);
+
+    try {
+      const info = await getTransporter().sendMail(mailOptions);
+      console.log('DEBUG: email enviado:', info && info.response ? info.response : 'SEM_RESPONSE');
+      return {
+        ok: true,
+        info
+      };
+    } catch (err) {
+      console.error('DEBUG: erro ao enviar email:', err);
+      return {
+        ok: false,
+        error: err
+      };
+    }
   }
 
   function buildStageTwoMail(reserva) {
@@ -88,9 +123,38 @@ function createEmailService(options = {}) {
     };
   }
 
+  function buildSupportMail(reserva) {
+    const supportTo = String(env.SUPPORT_NOTIFICATION_EMAIL || env.TEST_EMAIL_TO || env.SMTP_USER || '').trim();
+    const pitId = normalizePitId(reserva.pitId || reserva.id || '');
+    const dataLabel = formatDateBr(reserva.data || '');
+    const periodoLabel = reserva.periodo === 'manha' ? 'Manha' : reserva.periodo === 'tarde' ? 'Tarde' : (reserva.periodo || '-');
+    const servicoLabel = reserva.servico || '-';
+    const piloto = reserva.nomePiloto || reserva.nome || '-';
+
+    const text = [
+      'Reenvio de confirmacao de reserva.',
+      '',
+      `Pit ID: ${pitId || '-'}`,
+      `Piloto: ${piloto}`,
+      `Data: ${dataLabel}`,
+      `Periodo: ${periodoLabel}`,
+      `Servico: ${servicoLabel}`,
+      `Email cliente: ${reserva.email || '-'}`
+    ].join('\n');
+
+    return {
+      from: smtpSettings.from,
+      to: supportTo,
+      subject: `Reenvio confirmacao - ${pitId || 'U-RACE'}`,
+      text,
+      ...(smtpSettings.replyTo ? { replyTo: smtpSettings.replyTo } : {})
+    };
+  }
+
   return {
     async sendStageTwoConfirmation(reserva) {
       if (!smtpSettings.configured) {
+        logSmtpConfig();
         return { sent: false, reason: 'SMTP_NOT_CONFIGURED' };
       }
 
@@ -98,21 +162,85 @@ function createEmailService(options = {}) {
         return { sent: false, reason: 'INVALID_EMAIL' };
       }
 
-      try {
-        const mailOptions = buildStageTwoMail(reserva);
-        await getTransporter().sendMail(mailOptions);
+      const mailOptions = buildStageTwoMail(reserva);
+      const sendResult = await sendMailWithDiagnostics(mailOptions);
+      if (sendResult.ok) {
         return {
           sent: true,
           to: reserva.email,
           sentAt: new Date().toISOString()
         };
-      } catch (error) {
+      }
+
+      return {
+        sent: false,
+        reason: 'SEND_FAILED',
+        error: sendResult.error && sendResult.error.message ? sendResult.error.message : 'UNKNOWN_SEND_ERROR'
+      };
+    },
+
+    async sendTestEmail() {
+      if (!smtpSettings.configured) {
+        logSmtpConfig();
+        return { sent: false, reason: 'SMTP_NOT_CONFIGURED' };
+      }
+
+      const to = TEST_EMAIL_TO;
+      if (!validateEmail(to)) {
+        return { sent: false, reason: 'TEST_EMAIL_TO_INVALID' };
+      }
+
+      const mailOptions = {
+        from: smtpSettings.from,
+        to,
+        subject: 'TESTE SMTP',
+        text: 'Se chegou, o SMTP esta funcionando',
+        ...(smtpSettings.replyTo ? { replyTo: smtpSettings.replyTo } : {})
+      };
+
+      const sendResult = await sendMailWithDiagnostics(mailOptions);
+      if (sendResult.ok) {
         return {
-          sent: false,
-          reason: 'SEND_FAILED',
-          error: error && error.message ? error.message : 'UNKNOWN_SEND_ERROR'
+          sent: true,
+          to,
+          sentAt: new Date().toISOString(),
+          response: sendResult.info && sendResult.info.response ? sendResult.info.response : null
         };
       }
+
+      return {
+        sent: false,
+        reason: 'SEND_FAILED',
+        error: sendResult.error && sendResult.error.message ? sendResult.error.message : 'UNKNOWN_SEND_ERROR'
+      };
+    },
+
+    async sendSupportNotification(reserva) {
+      if (!smtpSettings.configured) {
+        logSmtpConfig();
+        return { sent: false, reason: 'SMTP_NOT_CONFIGURED' };
+      }
+
+      const mailOptions = buildSupportMail(reserva || {});
+      if (!validateEmail(mailOptions.to)) {
+        return { sent: false, reason: 'SUPPORT_EMAIL_NOT_CONFIGURED' };
+      }
+
+      const sendResult = await sendMailWithDiagnostics(mailOptions);
+      if (sendResult.ok) {
+        return {
+          sent: true,
+          to: mailOptions.to,
+          sentAt: new Date().toISOString(),
+          response: sendResult.info && sendResult.info.response ? sendResult.info.response : null
+        };
+      }
+
+      return {
+        sent: false,
+        reason: 'SEND_FAILED',
+        error: sendResult.error && sendResult.error.message ? sendResult.error.message : 'UNKNOWN_SEND_ERROR'
+      };
     }
   };
 }
@@ -487,7 +615,7 @@ function createApp(options = {}) {
   return async function app(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, PATCH, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
 
     if (req.method === 'OPTIONS') {
       res.statusCode = 204;
@@ -504,6 +632,57 @@ function createApp(options = {}) {
 
     if (req.method === 'GET' && requestUrl.pathname === '/health') {
       sendJson(res, 200, { ok: true, status: 'healthy' });
+      return;
+    }
+
+    if (req.method === 'GET' && requestUrl.pathname === '/api/test-email') {
+      try {
+        const result = await emailService.sendTestEmail();
+        if (!result || !result.sent) {
+          sendJson(res, 500, {
+            ok: false,
+            error: {
+              code: result && result.reason ? result.reason : 'TEST_EMAIL_FAILED',
+              message: 'Falha ao enviar e-mail de teste SMTP.',
+              details: result && result.error ? [result.error] : []
+            },
+            smtp: {
+              host: process.env.SMTP_HOST || 'smtp.gmail.com',
+              port: process.env.SMTP_PORT || '587',
+              user: process.env.SMTP_USER ? 'OK' : 'MISSING',
+              pass: process.env.SMTP_PASS ? 'OK' : 'MISSING'
+            }
+          });
+          return;
+        }
+
+        sendJson(res, 200, {
+          ok: true,
+          message: 'E-mail de teste enviado com sucesso.',
+          emailConfirmation: {
+            sent: true,
+            to: result.to,
+            sentAt: result.sentAt,
+            response: result.response || null
+          },
+          smtp: {
+            host: process.env.SMTP_HOST || 'smtp.gmail.com',
+            port: process.env.SMTP_PORT || '587',
+            user: process.env.SMTP_USER ? 'OK' : 'MISSING',
+            pass: process.env.SMTP_PASS ? 'OK' : 'MISSING'
+          }
+        });
+      } catch (error) {
+        console.error('Erro no endpoint /api/test-email:', error);
+        sendJson(res, 500, {
+          ok: false,
+          error: {
+            code: 'TEST_EMAIL_INTERNAL_ERROR',
+            message: 'Erro interno ao executar teste de e-mail SMTP.',
+            details: [error && error.message ? error.message : 'UNKNOWN']
+          }
+        });
+      }
       return;
     }
 
@@ -588,6 +767,57 @@ function createApp(options = {}) {
             code: 'INTERNAL_ERROR',
             message: 'Nao foi possivel consultar reserva por pitId.',
             details: []
+          }
+        });
+      }
+      return;
+    }
+
+    const resendMatch = requestUrl.pathname.match(/^\/api\/reservas\/([^/]+)\/resend-confirmation$/);
+    if (req.method === 'POST' && resendMatch) {
+      const reservaId = decodeURIComponent(resendMatch[1] || '');
+      const pitId = normalizePitId(reservaId);
+      if (!pitId) {
+        sendJson(res, 400, {
+          error: {
+            code: 'INVALID_PIT_ID',
+            message: 'Pit ID invalido para reenvio.',
+            details: []
+          }
+        });
+        return;
+      }
+
+      try {
+        const found = await repo.getByPitId(pitId);
+        if (!found || !found.exists) {
+          sendJson(res, 404, {
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Nao encontrado',
+              details: []
+            }
+          });
+          return;
+        }
+
+        const reserva = normalizeReservaRecord(found.id, found.data || {});
+        const emailConfirmation = await emailService.sendStageTwoConfirmation(reserva);
+        const supportNotification = await emailService.sendSupportNotification(reserva);
+
+        sendJson(res, 200, {
+          ok: Boolean(emailConfirmation && emailConfirmation.sent) && Boolean(supportNotification && supportNotification.sent),
+          reserva,
+          emailConfirmation: emailConfirmation || { sent: false, reason: 'UNAVAILABLE' },
+          supportNotification: supportNotification || { sent: false, reason: 'UNAVAILABLE' }
+        });
+      } catch (error) {
+        console.error('Erro ao reenviar confirmacao:', error);
+        sendJson(res, 500, {
+          error: {
+            code: 'INTERNAL_ERROR',
+            message: 'Falha ao reenviar confirmacao por e-mail.',
+            details: [error && error.message ? error.message : 'UNKNOWN']
           }
         });
       }
@@ -697,6 +927,10 @@ function createApp(options = {}) {
         let emailConfirmation;
 
         if (reserva.stageTwoEmailSentAt) {
+          console.log('DEBUG: envio de email ignorado para pitId pois stageTwoEmailSentAt ja existe:', {
+            pitId,
+            stageTwoEmailSentAt: reserva.stageTwoEmailSentAt
+          });
           emailConfirmation = {
             sent: false,
             skipped: true,
@@ -705,6 +939,10 @@ function createApp(options = {}) {
             to: reserva.email || validation.data.email
           };
         } else {
+          console.log('DEBUG: etapa 2 concluida, iniciando fluxo de envio de email:', {
+            pitId,
+            to: reserva.email || validation.data.email
+          });
           emailConfirmation = await emailService.sendStageTwoConfirmation(reserva);
 
           if (emailConfirmation && emailConfirmation.sent) {

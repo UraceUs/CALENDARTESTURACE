@@ -75,9 +75,77 @@ describe('PATCH /api/reservas/pit/:pitId', () => {
         sent: true,
         to: reserva.email,
         sentAt: '2026-01-01T10:00:00.000Z'
+      })),
+      sendSupportNotification: jest.fn(async () => ({
+        sent: true,
+        to: 'admin@example.com',
+        sentAt: '2026-01-01T10:00:00.000Z'
+      })),
+      sendTestEmail: jest.fn(async () => ({
+        sent: true,
+        to: 'smtp-test@example.com',
+        sentAt: '2026-01-01T10:00:00.000Z',
+        response: '250 Ok'
       }))
     };
     app = createApp({ repo, emailService });
+  });
+
+  it('deve executar endpoint de teste SMTP em GET /api/test-email', async () => {
+    const response = await request(app).get('/api/test-email');
+
+    expect(response.status).toBe(200);
+    expect(response.body.ok).toBe(true);
+    expect(response.body.emailConfirmation).toBeTruthy();
+    expect(response.body.emailConfirmation.sent).toBe(true);
+    expect(emailService.sendTestEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it('deve reenviar confirmacao em POST /api/reservas/:id/resend-confirmation', async () => {
+    await request(app)
+      .patch('/api/reservas/pit/PIT-RESEND-1')
+      .send({
+        etapa: 1,
+        data: '2026-08-11',
+        periodo: 'manha',
+        servico: 'Professional Coaching'
+      });
+
+    await request(app)
+      .patch('/api/reservas/pit/PIT-RESEND-1')
+      .send({
+        etapa: 2,
+        nomePiloto: 'Joao Silva',
+        responsavelPiloto: 'Maria Silva',
+        email: 'joao@example.com',
+        telefone: '+55 61 99999-0000',
+        age: '17',
+        height: '1.72m',
+        weight: '63kg',
+        waist: '78cm',
+        kartingExperience: 'Sim',
+        experienceDescription: 'Treinos regionais'
+      });
+
+    const response = await request(app)
+      .post('/api/reservas/PIT-RESEND-1/resend-confirmation')
+      .send({});
+
+    expect(response.status).toBe(200);
+    expect(response.body.ok).toBe(true);
+    expect(response.body.emailConfirmation.sent).toBe(true);
+    expect(response.body.supportNotification.sent).toBe(true);
+    expect(emailService.sendStageTwoConfirmation).toHaveBeenCalled();
+    expect(emailService.sendSupportNotification).toHaveBeenCalled();
+  });
+
+  it('deve retornar 404 ao reenviar confirmacao para pitId inexistente', async () => {
+    const response = await request(app)
+      .post('/api/reservas/PIT-NAO-EXISTE/resend-confirmation')
+      .send({});
+
+    expect(response.status).toBe(404);
+    expect(response.body.error.code).toBe('NOT_FOUND');
   });
 
   it('deve criar/atualizar etapa 1 usando pitId como chave principal', async () => {
