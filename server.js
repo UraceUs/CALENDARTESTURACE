@@ -1058,12 +1058,22 @@ function createFirestoreReservaRepository() {
     };
   }
 
+  async function deleteReserva(pitId) {
+    const current = await getByPitId(pitId);
+    if (!current.exists) {
+      return false;
+    }
+    await current.ref.delete();
+    return true;
+  }
+
   return {
     getByPitId,
     listReservas,
     upsertStageOne,
     updateStageTwo,
-    markStageTwoEmailSent
+    markStageTwoEmailSent,
+    deleteReserva
   };
 }
 
@@ -1074,7 +1084,7 @@ function createApp(options = {}) {
   return async function app(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
 
     if (req.method === 'OPTIONS') {
       res.statusCode = 204;
@@ -1458,6 +1468,27 @@ function createApp(options = {}) {
             details: []
           }
         });
+      }
+      return;
+    }
+
+    const deleteReservaMatch = requestUrl.pathname.match(/^\/api\/reservas\/([^/]+)$/);
+    if (req.method === 'DELETE' && deleteReservaMatch) {
+      const pitId = normalizePitId(decodeURIComponent(deleteReservaMatch[1] || ''));
+      if (!pitId) {
+        sendJson(res, 400, { error: { code: 'INVALID_PIT_ID', message: 'Pit ID invalido.', details: [] } });
+        return;
+      }
+      try {
+        const deleted = await repo.deleteReserva(pitId);
+        if (!deleted) {
+          sendJson(res, 404, { error: { code: 'NOT_FOUND', message: 'Reserva nao encontrada.', details: [] } });
+          return;
+        }
+        sendJson(res, 200, { ok: true, deleted: pitId });
+      } catch (error) {
+        console.error('Erro ao excluir reserva:', error);
+        sendJson(res, 500, { error: { code: 'INTERNAL_ERROR', message: 'Falha ao excluir reserva.', details: [error && error.message ? error.message : 'UNKNOWN'] } });
       }
       return;
     }
