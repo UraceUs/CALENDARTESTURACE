@@ -550,7 +550,11 @@
         });
 
         if (response.ok) {
-          return true;
+          try {
+            return await response.json();
+          } catch (parseError) {
+            return { reserva: { ...payload } };
+          }
         }
 
         lastMessage = await parseApiError(response, lastMessage);
@@ -638,7 +642,20 @@
       try {
         state.isSubmitting = true;
         setFeedback(formFeedback, 'info', 'Enviando briefing...');
-        await tryUpdateBriefing(state.selectedReserva.id, payload);
+        const saveResult = await tryUpdateBriefing(state.selectedReserva.id, payload);
+        const emailConfirmation = saveResult && saveResult.emailConfirmation ? saveResult.emailConfirmation : null;
+
+        if (emailConfirmation && emailConfirmation.sent) {
+          const destination = emailConfirmation.to || payload.email;
+          setFeedback(formFeedback, 'success', `Briefing enviado com sucesso. Confirmacao enviada para ${destination}.`);
+          return;
+        }
+
+        if (emailConfirmation && emailConfirmation.skipped && emailConfirmation.reason === 'ALREADY_SENT') {
+          setFeedback(formFeedback, 'success', 'Briefing enviado com sucesso. A confirmacao deste Pit ID ja havia sido enviada anteriormente.');
+          return;
+        }
+
         setFeedback(formFeedback, 'success', 'Briefing enviado e vinculado ao mesmo Pit ID com sucesso.');
       } catch (error) {
         saveBriefingFallback(pitId, payload);

@@ -3,12 +3,119 @@
 const http = require('http');
 const { URL } = require('url');
 const admin = require('firebase-admin');
+const nodemailer = require('nodemailer');
 
 const PORT = Number(process.env.PORT || 3000);
 const RESERVAS_COLLECTION = 'reservas';
 const ALLOWED_PERIODS = new Set(['manha', 'tarde']);
 const ALLOWED_EXPERIENCE = new Set(['Sim', 'Nao']);
 const DEFAULT_SERVICES = ['Professional Coaching', 'Summer Camp', 'Trackside Support'];
+
+function formatDateBr(value) {
+  const dateMatch = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!dateMatch) {
+    return value || '-';
+  }
+  return `${dateMatch[3]}/${dateMatch[2]}/${dateMatch[1]}`;
+}
+
+function buildSmtpSettingsFromEnv(env = process.env) {
+  const host = String(env.SMTP_HOST || 'smtp.gmail.com').trim();
+  const port = Number(env.SMTP_PORT || 587);
+  const secure = String(env.SMTP_SECURE || 'false').toLowerCase() === 'true';
+  const user = String(env.SMTP_USER || '').trim();
+  const pass = String(env.SMTP_PASS || '').trim();
+  const from = String(env.SMTP_FROM || user).trim();
+  const replyTo = String(env.SMTP_REPLY_TO || '').trim();
+
+  const configured = Boolean(user && pass && from && host && Number.isFinite(port));
+  return {
+    configured,
+    from,
+    replyTo,
+    transport: {
+      host,
+      port,
+      secure,
+      auth: {
+        user,
+        pass
+      }
+    }
+  };
+}
+
+function createEmailService(options = {}) {
+  const env = options.env || process.env;
+  const transporterFactory = options.transporterFactory || nodemailer.createTransport;
+  const smtpSettings = buildSmtpSettingsFromEnv(env);
+  let transporter = null;
+
+  function getTransporter() {
+    if (!transporter) {
+      transporter = transporterFactory(smtpSettings.transport);
+    }
+    return transporter;
+  }
+
+  function buildStageTwoMail(reserva) {
+    const pitId = normalizePitId(reserva.pitId || reserva.id || '');
+    const dataLabel = formatDateBr(reserva.data || '');
+    const periodoLabel = reserva.periodo === 'manha' ? 'Manha' : reserva.periodo === 'tarde' ? 'Tarde' : (reserva.periodo || '-');
+    const servicoLabel = reserva.servico || '-';
+    const piloto = reserva.nomePiloto || reserva.nome || '-';
+    const responsavel = reserva.responsavelPiloto || reserva.nomeResponsavel || reserva.responsavel || '-';
+
+    const text = [
+      'Sua reserva foi confirmada com sucesso.',
+      '',
+      `Pit ID: ${pitId || '-'}`,
+      `Piloto: ${piloto}`,
+      `Responsavel: ${responsavel}`,
+      `Data: ${dataLabel}`,
+      `Periodo: ${periodoLabel}`,
+      `Servico: ${servicoLabel}`,
+      '',
+      'Nos vemos na pista.'
+    ].join('\n');
+
+    return {
+      from: smtpSettings.from,
+      to: reserva.email,
+      subject: `Confirmacao de reserva - ${pitId || 'U-RACE'}`,
+      text,
+      ...(smtpSettings.replyTo ? { replyTo: smtpSettings.replyTo } : {})
+    };
+  }
+
+  return {
+    async sendStageTwoConfirmation(reserva) {
+      if (!smtpSettings.configured) {
+        return { sent: false, reason: 'SMTP_NOT_CONFIGURED' };
+      }
+
+      if (!reserva || !validateEmail(reserva.email)) {
+        return { sent: false, reason: 'INVALID_EMAIL' };
+      }
+
+      try {
+        const mailOptions = buildStageTwoMail(reserva);
+        await getTransporter().sendMail(mailOptions);
+        return {
+          sent: true,
+          to: reserva.email,
+          sentAt: new Date().toISOString()
+        };
+      } catch (error) {
+        return {
+          sent: false,
+          reason: 'SEND_FAILED',
+          error: error && error.message ? error.message : 'UNKNOWN_SEND_ERROR'
+        };
+      }
+    }
+  };
+}
 
 function normalizePitId(value) {
   return String(value || '')
@@ -53,7 +160,8 @@ function normalizeReservaRecord(docId, data) {
     createdAt: toIsoStringIfPossible(raw.createdAt),
     updatedAt: toIsoStringIfPossible(raw.updatedAt),
     stageOneCompletedAt: toIsoStringIfPossible(raw.stageOneCompletedAt),
-    stageTwoCompletedAt: toIsoStringIfPossible(raw.stageTwoCompletedAt)
+    stageTwoCompletedAt: toIsoStringIfPossible(raw.stageTwoCompletedAt),
+    stageTwoEmailSentAt: toIsoStringIfPossible(raw.stageTwoEmailSentAt)
   };
 }
 
@@ -342,16 +450,39 @@ function createFirestoreReservaRepository() {
     };
   }
 
+  async function markStageTwoEmailSent(pitId, details = {}) {
+    const current = await getByPitId(pitId);
+    if (!current.exists) {
+      return null;
+    }
+
+    const now = String(details.sentAt || new Date().toISOString());
+    await current.ref.set({
+      pitId,
+      stageTwoEmailSentAt: now,
+      stageTwoEmailRecipient: String(details.recipient || '').trim(),
+      updatedAt: now
+    }, { merge: true });
+
+    const updated = await current.ref.get();
+    return {
+      id: updated.id,
+      data: updated.data() || {}
+    };
+  }
+
   return {
     getByPitId,
     listReservas,
     upsertStageOne,
-    updateStageTwo
+    updateStageTwo,
+    markStageTwoEmailSent
   };
 }
 
 function createApp(options = {}) {
   const repo = options.repo || createFirestoreReservaRepository();
+  const emailService = options.emailService || createEmailService();
 
   return async function app(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -562,8 +693,40 @@ function createApp(options = {}) {
           return;
         }
 
+        const reserva = normalizeReservaRecord(pitId, (updated && updated.data) || {});
+        let emailConfirmation;
+
+        if (reserva.stageTwoEmailSentAt) {
+          emailConfirmation = {
+            sent: false,
+            skipped: true,
+            reason: 'ALREADY_SENT',
+            sentAt: reserva.stageTwoEmailSentAt,
+            to: reserva.email || validation.data.email
+          };
+        } else {
+          emailConfirmation = await emailService.sendStageTwoConfirmation(reserva);
+
+          if (emailConfirmation && emailConfirmation.sent) {
+            const sentAt = String(emailConfirmation.sentAt || new Date().toISOString());
+            reserva.stageTwoEmailSentAt = sentAt;
+
+            if (typeof repo.markStageTwoEmailSent === 'function') {
+              try {
+                await repo.markStageTwoEmailSent(pitId, {
+                  sentAt,
+                  recipient: reserva.email || emailConfirmation.to || ''
+                });
+              } catch (markError) {
+                console.error('Falha ao marcar envio de e-mail da etapa 2:', markError);
+              }
+            }
+          }
+        }
+
         sendJson(res, 200, {
-          reserva: normalizeReservaRecord(pitId, (updated && updated.data) || {}),
+          reserva,
+          emailConfirmation: emailConfirmation || { sent: false, reason: 'UNAVAILABLE' },
           meta: {
             stage: 2,
             key: 'pitId'
@@ -620,6 +783,7 @@ if (require.main === module) {
 
 module.exports = {
   createApp,
+  createEmailService,
   createFirestoreReservaRepository,
   normalizePitId,
   validateStageOne,
