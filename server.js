@@ -2,6 +2,7 @@
 
 const http = require('http');
 const { URL } = require('url');
+const dns = require('dns').promises;
 const admin = require('firebase-admin');
 const nodemailer = require('nodemailer');
 const { google } = require('googleapis');
@@ -22,9 +23,11 @@ function formatDateBr(value) {
 
 function buildSmtpSettingsFromEnv(env = process.env) {
   const host = String(env.SMTP_HOST || 'smtp.gmail.com').trim();
+  const alternateHost = String(env.SMTP_ALT_HOST || 'smtp-relay.gmail.com').trim();
   const port = Number(env.SMTP_PORT || 587);
   const secure = String(env.SMTP_SECURE || 'false').toLowerCase() === 'true';
   const family = Number(env.SMTP_FAMILY || 4);
+  const forceIpv4 = String(env.SMTP_FORCE_IPV4 || 'true').toLowerCase() !== 'false';
   const connectionTimeout = Number(env.SMTP_CONNECTION_TIMEOUT_MS || 20000);
   const greetingTimeout = Number(env.SMTP_GREETING_TIMEOUT_MS || 20000);
   const socketTimeout = Number(env.SMTP_SOCKET_TIMEOUT_MS || 30000);
@@ -62,6 +65,8 @@ function buildSmtpSettingsFromEnv(env = process.env) {
     authMode: hasOAuthAuth ? 'gmail-oauth2' : (hasPasswordAuth ? 'password' : 'none'),
     from,
     replyTo,
+    alternateHost,
+    forceIpv4,
     transport: {
       host,
       port,
@@ -139,8 +144,10 @@ function createEmailService(options = {}) {
   function getSmtpStatusSnapshot() {
     return {
       host: smtpSettings.transport.host,
+      alternateHost: smtpSettings.alternateHost,
       port: smtpSettings.transport.port,
       family: smtpSettings.transport.family,
+      forceIpv4: smtpSettings.forceIpv4,
       connectionTimeout: smtpSettings.transport.connectionTimeout,
       greetingTimeout: smtpSettings.transport.greetingTimeout,
       socketTimeout: smtpSettings.transport.socketTimeout,
@@ -202,6 +209,41 @@ function createEmailService(options = {}) {
     }
   }
 
+  async function resolveTransportHost(baseHost) {
+    if (!smtpSettings.forceIpv4 || smtpSettings.transport.family !== 4 || !baseHost) {
+      return {
+        host: baseHost,
+        servername: null
+      };
+    }
+
+    try {
+      const resolved = await dns.resolve4(baseHost);
+      if (!Array.isArray(resolved) || resolved.length === 0) {
+        throw new Error('EMPTY_DNS_RESULT');
+      }
+
+      const ipv4Host = resolved[0];
+      console.log('DEBUG SMTP: host resolvido para IPv4:', {
+        requestedHost: baseHost,
+        resolvedHost: ipv4Host
+      });
+      return {
+        host: ipv4Host,
+        servername: baseHost
+      };
+    } catch (error) {
+      console.error('DEBUG SMTP: falha ao resolver IPv4, mantendo host original:', {
+        requestedHost: baseHost,
+        error: error && error.message ? error.message : 'UNKNOWN'
+      });
+      return {
+        host: baseHost,
+        servername: null
+      };
+    }
+  }
+
   async function createTransporterWithDiagnostics(overrides = {}, label = 'primary') {
     let transportConfig = {
       ...smtpSettings.transport,
@@ -221,10 +263,21 @@ function createEmailService(options = {}) {
       };
     }
 
+    const resolvedHost = await resolveTransportHost(transportConfig.host);
+    transportConfig = {
+      ...transportConfig,
+      host: resolvedHost.host,
+      tls: {
+        ...(transportConfig.tls || {}),
+        ...(resolvedHost.servername ? { servername: resolvedHost.servername } : {})
+      }
+    };
+
     const nextTransporter = transporterFactory(transportConfig);
     console.log('DEBUG SMTP: transporter inicializado:', {
       label,
-      host: smtpSettings.transport.host,
+      host: transportConfig.host,
+      requestedHost: overrides.host || smtpSettings.transport.host,
       port: transportConfig.port,
       secure: transportConfig.secure,
       family: transportConfig.family,
@@ -316,6 +369,26 @@ function createEmailService(options = {}) {
       fallbackProfiles.push({
         label: 'fallback-465',
         overrides: {
+          port: 465,
+          secure: true
+        }
+      });
+    }
+
+    if (smtpSettings.alternateHost && smtpSettings.alternateHost !== smtpSettings.transport.host) {
+      fallbackProfiles.push({
+        label: 'fallback-alt-host-587',
+        overrides: {
+          host: smtpSettings.alternateHost,
+          port: 587,
+          secure: false
+        }
+      });
+
+      fallbackProfiles.push({
+        label: 'fallback-alt-host-465',
+        overrides: {
+          host: smtpSettings.alternateHost,
           port: 465,
           secure: true
         }
