@@ -591,6 +591,24 @@
       localStorage.setItem(key, JSON.stringify(cache));
     }
 
+    function pushAdminNotification(message, pitId) {
+      try {
+        const key = 'calendar_admin_notifications';
+        const raw = localStorage.getItem(key);
+        const list = raw ? JSON.parse(raw) : [];
+        const safeList = Array.isArray(list) ? list : [];
+        safeList.push({
+          source: 'driver-briefing',
+          pitId: normalizePitId(pitId),
+          message: String(message || 'Falha no envio do briefing.'),
+          createdAt: new Date().toISOString()
+        });
+        localStorage.setItem(key, JSON.stringify(safeList.slice(-30)));
+      } catch (error) {
+        console.error('Falha ao registrar notificacao local do admin:', error);
+      }
+    }
+
     async function onPitIdChange() {
       const normalized = normalizePitId(pitIdInput.value);
       pitIdInput.value = normalized;
@@ -672,11 +690,8 @@
 
         if (emailConfirmation && emailConfirmation.sent === false) {
           const reason = emailConfirmation.error || emailConfirmation.reason || 'UNKNOWN';
-          setFeedback(
-            formFeedback,
-            'error',
-            `Briefing atualizado, mas o e-mail de confirmacao nao foi enviado (${reason}). Tente novamente em instantes ou use o reenvio no Admin.`
-          );
+          pushAdminNotification(`E-mail de confirmacao falhou (${reason}).`, pitId);
+          setFeedback(formFeedback, 'success', 'Briefing enviado com sucesso!');
           return;
         }
 
@@ -690,15 +705,13 @@
 
         if (shouldFallback) {
           saveBriefingFallback(pitId, payload);
-          setFeedback(
-            formFeedback,
-            'info',
-            'Falha de conexao com a API. Briefing salvo localmente para este Pit ID. Tente reenviar em instantes.'
-          );
+          pushAdminNotification('Falha de conexao com a API. Dados salvos localmente no navegador.', pitId);
+          setFeedback(formFeedback, 'success', 'Briefing enviado com sucesso!');
           return;
         }
 
-        setFeedback(formFeedback, 'error', message);
+        pushAdminNotification(message, pitId);
+        setFeedback(formFeedback, 'info', 'Nao foi possivel confirmar agora. A equipe foi notificada no painel de admin.');
       } finally {
         state.isSubmitting = false;
       }

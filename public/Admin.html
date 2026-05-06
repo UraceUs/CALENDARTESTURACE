@@ -2603,6 +2603,18 @@
       }
     }
 
+    function pullAdminNotifications() {
+      try {
+        const key = 'calendar_admin_notifications';
+        const raw = localStorage.getItem(key);
+        const parsed = raw ? JSON.parse(raw) : [];
+        localStorage.removeItem(key);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (error) {
+        return [];
+      }
+    }
+
     function mergeLocalBriefingData(reservas) {
       const cache = loadLocalBriefingCache();
       return (Array.isArray(reservas) ? reservas : []).map(item => {
@@ -3255,7 +3267,18 @@
         }
         renderCalendarMonths();
         await refreshAll();
-        setFeedback(reservationsFeedback, '', '');
+        const notifications = pullAdminNotifications();
+        if (notifications.length > 0) {
+          const latest = notifications[notifications.length - 1];
+          const pit = latest && latest.pitId ? ` (Pit ID: ${latest.pitId})` : '';
+          setFeedback(
+            reservationsFeedback,
+            'error',
+            `Notificacao do Driver Briefing: ${latest && latest.message ? latest.message : 'Erro nao especificado.'}${pit}`
+          );
+        } else {
+          setFeedback(reservationsFeedback, '', '');
+        }
       } catch (error) {
         setFeedback(reservationsFeedback, 'error', toUserMessage(error, 'Falha ao carregar painel admin.'));
       }
