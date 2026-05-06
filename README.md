@@ -10,6 +10,7 @@ Sistema de agendamento com duas interfaces:
 - `server.js`: backend HTTP + APIs
 - `public/`: interface web
   - `public/Calendar.html`: cliente
+  - `public/DriverBriefing.html`: etapa 2 (driver briefing)
   - `public/Admin.html`: painel admin
   - `public/admin/index.html`: atalho para `/admin/`
 - `tests/`: testes automatizados (API e E2E)
@@ -191,6 +192,11 @@ Para usar uma API backend publicada (Render, Railway, VPS etc.), abra a URL com 
 
 O valor de `apiBase` valido fica salvo no navegador e sera reutilizado nas proximas visitas.
 Sem backend conectado, cliente e admin exibem erro e nao persistem dados.
+
+### Caminho final do Driver Briefing no GitHub Pages
+
+- URL esperada: `https://<usuario>.github.io/<repositorio>/public/DriverBriefing.html`
+- Para este repositório: `https://uraceus.github.io/CALENDARTESTURACE/public/DriverBriefing.html`
 
 ### Configuracao permanente de API no frontend
 
