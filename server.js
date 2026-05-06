@@ -24,6 +24,10 @@ function buildSmtpSettingsFromEnv(env = process.env) {
   const host = String(env.SMTP_HOST || 'smtp.gmail.com').trim();
   const port = Number(env.SMTP_PORT || 587);
   const secure = String(env.SMTP_SECURE || 'false').toLowerCase() === 'true';
+  const family = Number(env.SMTP_FAMILY || 4);
+  const connectionTimeout = Number(env.SMTP_CONNECTION_TIMEOUT_MS || 20000);
+  const greetingTimeout = Number(env.SMTP_GREETING_TIMEOUT_MS || 20000);
+  const socketTimeout = Number(env.SMTP_SOCKET_TIMEOUT_MS || 30000);
   const user = String(env.SMTP_USER || '').trim();
   const pass = String(env.SMTP_PASS || '').trim();
   const gmailClientId = String(env.GMAIL_CLIENT_ID || '').trim();
@@ -62,6 +66,10 @@ function buildSmtpSettingsFromEnv(env = process.env) {
       host,
       port,
       secure,
+      family,
+      connectionTimeout,
+      greetingTimeout,
+      socketTimeout,
       auth
     }
   };
@@ -132,6 +140,10 @@ function createEmailService(options = {}) {
     return {
       host: smtpSettings.transport.host,
       port: smtpSettings.transport.port,
+      family: smtpSettings.transport.family,
+      connectionTimeout: smtpSettings.transport.connectionTimeout,
+      greetingTimeout: smtpSettings.transport.greetingTimeout,
+      socketTimeout: smtpSettings.transport.socketTimeout,
       authMode: smtpSettings.authMode,
       user: smtpSettings.transport.auth && smtpSettings.transport.auth.user ? smtpSettings.transport.auth.user : 'MISSING',
       pass: smtpSettings.hasPasswordAuth ? 'OK' : 'N/A',
@@ -207,6 +219,7 @@ function createEmailService(options = {}) {
     console.log('DEBUG SMTP: transporter inicializado:', {
       host: smtpSettings.transport.host,
       port: smtpSettings.transport.port,
+      family: smtpSettings.transport.family,
       user: smtpSettings.transport.auth.user || 'MISSING',
       authMode: smtpSettings.authMode
     });
@@ -225,12 +238,20 @@ function createEmailService(options = {}) {
     if (smtpSettings.authMode === 'gmail-oauth2') {
       logSmtpConfig();
       const oauthTransporter = await createTransporterWithDiagnostics();
+      const verifyStartedAt = Date.now();
+      console.log('DEBUG SMTP: iniciando transporter.verify() (oauth2)...');
       try {
         await oauthTransporter.verify();
-        console.log('DEBUG SMTP: transporter.verify() OK');
+        console.log('DEBUG SMTP: transporter.verify() OK', {
+          durationMs: Date.now() - verifyStartedAt
+        });
       } catch (error) {
-        console.error('DEBUG SMTP: transporter.verify() falhou:', error);
-        throw error;
+        console.error('DEBUG SMTP: transporter.verify() falhou:', {
+          durationMs: Date.now() - verifyStartedAt,
+          code: error && error.code ? error.code : 'UNKNOWN',
+          message: error && error.message ? error.message : 'UNKNOWN'
+        });
+        // Keep attempting sendMail because some providers can fail verify but still accept send.
       }
       return oauthTransporter;
     }
@@ -242,12 +263,20 @@ function createEmailService(options = {}) {
 
     if (!transporterVerifyAttempted) {
       transporterVerifyAttempted = true;
+      const verifyStartedAt = Date.now();
+      console.log('DEBUG SMTP: iniciando transporter.verify() (password)...');
       try {
         await transporter.verify();
-        console.log('DEBUG SMTP: transporter.verify() OK');
+        console.log('DEBUG SMTP: transporter.verify() OK', {
+          durationMs: Date.now() - verifyStartedAt
+        });
       } catch (error) {
         transporterVerifyError = error;
-        console.error('DEBUG SMTP: transporter.verify() falhou:', error);
+        console.error('DEBUG SMTP: transporter.verify() falhou:', {
+          durationMs: Date.now() - verifyStartedAt,
+          code: error && error.code ? error.code : 'UNKNOWN',
+          message: error && error.message ? error.message : 'UNKNOWN'
+        });
       }
     }
 
@@ -261,25 +290,56 @@ function createEmailService(options = {}) {
       subject: mailOptions && mailOptions.subject ? mailOptions.subject : ''
     });
 
-    try {
-      const smtpTransporter = await getTransporter();
-      if (transporterVerifyError) {
-        console.log('DEBUG SMTP: envio continuara apesar de verify falhar; erro do verify:', transporterVerifyError.message || 'UNKNOWN_VERIFY_ERROR');
-      }
+    const shouldRetry = (error) => {
+      const code = String((error && error.code) || '').toUpperCase();
+      const message = String((error && error.message) || '').toLowerCase();
+      return [
+        code === 'ETIMEDOUT',
+        code === 'ESOCKET',
+        code === 'ECONNECTION',
+        code === 'EAI_AGAIN',
+        message.includes('timeout'),
+        message.includes('connection')
+      ].some(Boolean);
+    };
 
-      const info = await smtpTransporter.sendMail(mailOptions);
-      console.log('DEBUG: email enviado:', info && info.response ? info.response : 'SEM_RESPONSE');
-      return {
-        ok: true,
-        info
-      };
-    } catch (err) {
-      console.error('DEBUG: erro ao enviar email:', err);
-      return {
-        ok: false,
-        error: err
-      };
+    let lastError = null;
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      try {
+        const smtpTransporter = await getTransporter();
+        if (transporterVerifyError) {
+          console.log('DEBUG SMTP: envio continuara apesar de verify falhar; erro do verify:', transporterVerifyError.message || 'UNKNOWN_VERIFY_ERROR');
+        }
+
+        const info = await smtpTransporter.sendMail(mailOptions);
+        console.log('DEBUG: email enviado:', {
+          attempt,
+          response: info && info.response ? info.response : 'SEM_RESPONSE'
+        });
+        return {
+          ok: true,
+          info
+        };
+      } catch (err) {
+        lastError = err;
+        console.error('DEBUG: erro ao enviar email:', {
+          attempt,
+          code: err && err.code ? err.code : 'UNKNOWN',
+          message: err && err.message ? err.message : 'UNKNOWN'
+        });
+
+        if (attempt === 1 && shouldRetry(err)) {
+          console.log('DEBUG SMTP: erro transitório detectado, tentando envio novamente...');
+          continue;
+        }
+        break;
+      }
     }
+
+    return {
+      ok: false,
+      error: lastError || new Error('UNKNOWN_SEND_ERROR')
+    };
   }
 
   function buildStageTwoMail(reserva) {
