@@ -33,19 +33,37 @@ function buildSmtpSettingsFromEnv(env = process.env) {
   const socketTimeout = Number(env.SMTP_SOCKET_TIMEOUT_MS || 30000);
   const user = String(env.SMTP_USER || '').trim();
   const pass = String(env.SMTP_PASS || '').trim();
+  const requestedAuthMode = String(env.EMAIL_AUTH_MODE || 'auto').trim().toLowerCase();
   const gmailClientId = String(env.GMAIL_CLIENT_ID || '').trim();
   const gmailClientSecret = String(env.GMAIL_CLIENT_SECRET || '').trim();
   const gmailRefreshToken = String(env.GMAIL_REFRESH_TOKEN || '').trim();
   const gmailFrom = String(env.GMAIL_FROM || '').trim();
   const hasPasswordAuth = Boolean(user && pass);
   const hasOAuthAuth = Boolean(gmailClientId && gmailClientSecret && gmailRefreshToken && gmailFrom);
-  const effectiveUser = hasOAuthAuth ? gmailFrom : user;
+
+  let authMode = 'none';
+  if (requestedAuthMode === 'smtp' || requestedAuthMode === 'password') {
+    authMode = 'password';
+  } else if (requestedAuthMode === 'oauth2' || requestedAuthMode === 'gmail-oauth2') {
+    authMode = 'gmail-oauth2';
+  } else if (hasPasswordAuth) {
+    authMode = 'password';
+  } else if (hasOAuthAuth) {
+    authMode = 'gmail-oauth2';
+  }
+
+  const effectiveUser = authMode === 'gmail-oauth2' ? gmailFrom : user;
   const from = String(env.SMTP_FROM || effectiveUser).trim();
   const replyTo = String(env.SMTP_REPLY_TO || '').trim();
 
-  const configured = Boolean((hasOAuthAuth || hasPasswordAuth) && from && host && Number.isFinite(port));
+  const configured = Boolean(
+    from &&
+    host &&
+    Number.isFinite(port) &&
+    ((authMode === 'password' && hasPasswordAuth) || (authMode === 'gmail-oauth2' && hasOAuthAuth))
+  );
 
-  const auth = hasOAuthAuth
+  const auth = authMode === 'gmail-oauth2'
     ? {
         type: 'OAuth2',
         user: gmailFrom,
@@ -53,16 +71,19 @@ function buildSmtpSettingsFromEnv(env = process.env) {
         clientSecret: gmailClientSecret,
         refreshToken: gmailRefreshToken
       }
-    : {
+    : authMode === 'password'
+      ? {
         user,
         pass
-      };
+      }
+      : {};
 
   return {
     configured,
     hasPasswordAuth,
     hasOAuthAuth,
-    authMode: hasOAuthAuth ? 'gmail-oauth2' : (hasPasswordAuth ? 'password' : 'none'),
+    requestedAuthMode,
+    authMode,
     from,
     replyTo,
     alternateHost,
@@ -101,7 +122,39 @@ function createEmailService(options = {}) {
       missing.push('SMTP_FROM|GMAIL_FROM');
     }
 
-    if (!smtpSettings.hasPasswordAuth && !smtpSettings.hasOAuthAuth) {
+    if (smtpSettings.authMode === 'password') {
+      const smtpUser = String(env.SMTP_USER || '').trim();
+      const smtpPass = String(env.SMTP_PASS || '').trim();
+
+      if (!smtpUser) {
+        missing.push('SMTP_USER');
+      }
+      if (!smtpPass) {
+        missing.push('SMTP_PASS');
+      }
+    }
+
+    if (smtpSettings.authMode === 'gmail-oauth2') {
+      const gmailClientId = String(env.GMAIL_CLIENT_ID || '').trim();
+      const gmailClientSecret = String(env.GMAIL_CLIENT_SECRET || '').trim();
+      const gmailRefreshToken = String(env.GMAIL_REFRESH_TOKEN || '').trim();
+      const gmailFrom = String(env.GMAIL_FROM || '').trim();
+
+      if (!gmailClientId) {
+        missing.push('GMAIL_CLIENT_ID');
+      }
+      if (!gmailClientSecret) {
+        missing.push('GMAIL_CLIENT_SECRET');
+      }
+      if (!gmailRefreshToken) {
+        missing.push('GMAIL_REFRESH_TOKEN');
+      }
+      if (!gmailFrom) {
+        missing.push('GMAIL_FROM');
+      }
+    }
+
+    if (smtpSettings.authMode === 'none') {
       const smtpUser = String(env.SMTP_USER || '').trim();
       const smtpPass = String(env.SMTP_PASS || '').trim();
       const gmailClientId = String(env.GMAIL_CLIENT_ID || '').trim();
@@ -117,7 +170,6 @@ function createEmailService(options = {}) {
           missing.push('SMTP_PASS');
         }
       }
-
       if (gmailClientId || gmailClientSecret || gmailRefreshToken || gmailFrom) {
         if (!gmailClientId) {
           missing.push('GMAIL_CLIENT_ID');
@@ -132,9 +184,8 @@ function createEmailService(options = {}) {
           missing.push('GMAIL_FROM');
         }
       }
-
       if (missing.length === 0) {
-        missing.push('GMAIL_CLIENT_ID+GMAIL_CLIENT_SECRET+GMAIL_REFRESH_TOKEN+GMAIL_FROM');
+        missing.push('SMTP_USER+SMTP_PASS or GMAIL_CLIENT_ID+GMAIL_CLIENT_SECRET+GMAIL_REFRESH_TOKEN+GMAIL_FROM');
       }
     }
 
@@ -151,9 +202,10 @@ function createEmailService(options = {}) {
       connectionTimeout: smtpSettings.transport.connectionTimeout,
       greetingTimeout: smtpSettings.transport.greetingTimeout,
       socketTimeout: smtpSettings.transport.socketTimeout,
+      requestedAuthMode: smtpSettings.requestedAuthMode,
       authMode: smtpSettings.authMode,
       user: smtpSettings.transport.auth && smtpSettings.transport.auth.user ? smtpSettings.transport.auth.user : 'MISSING',
-      pass: smtpSettings.hasPasswordAuth ? 'OK' : 'N/A',
+      pass: smtpSettings.authMode === 'password' ? (smtpSettings.hasPasswordAuth ? 'OK' : 'MISSING') : 'N/A',
       oauthClientId: smtpSettings.hasOAuthAuth ? 'OK' : (String(env.GMAIL_CLIENT_ID || '').trim() ? 'PARTIAL' : 'MISSING'),
       oauthClientSecret: smtpSettings.hasOAuthAuth ? 'OK' : (String(env.GMAIL_CLIENT_SECRET || '').trim() ? 'PARTIAL' : 'MISSING'),
       oauthRefreshToken: smtpSettings.hasOAuthAuth ? 'OK' : (String(env.GMAIL_REFRESH_TOKEN || '').trim() ? 'PARTIAL' : 'MISSING'),
