@@ -2587,6 +2587,10 @@
         .replace(/[^A-Z0-9-_]/g, '');
     }
 
+    function getReservaPitId(reserva) {
+      return normalizePitId(reserva && (reserva.pitId || reserva.id));
+    }
+
     function loadLocalBriefingCache() {
       try {
         const raw = localStorage.getItem('calendar_briefing_cache');
@@ -2600,7 +2604,7 @@
     function mergeLocalBriefingData(reservas) {
       const cache = loadLocalBriefingCache();
       return (Array.isArray(reservas) ? reservas : []).map(item => {
-        const pitId = normalizePitId(item && item.pitId);
+        const pitId = getReservaPitId(item);
         const cached = pitId ? cache[pitId] : null;
         if (!cached || typeof cached !== 'object') {
           return item;
@@ -2624,7 +2628,7 @@
         return { label: 'Incompleta', cssClass: 'incomplete' };
       }
 
-      const hasStage1 = Boolean(reserva && reserva.pitId && reserva.data && reserva.periodo && reserva.servico);
+      const hasStage1 = Boolean(reserva && getReservaPitId(reserva) && reserva.data && reserva.periodo && reserva.servico);
       const hasDriverBriefing = Boolean(
         reserva &&
         reserva.nomePiloto &&
@@ -2648,7 +2652,7 @@
 
     function showQuickReservationInfo(reserva) {
       const lines = [
-        `Pit ID: ${reserva.pitId || '-'}`,
+        `Pit ID: ${getReservaPitId(reserva) || '-'}`,
         `Data: ${formatDateForSummary(reserva.data || '')}`,
         `Periodo: ${formatPeriod(reserva.periodo || '')}`,
         `Servico: ${reserva.servico || '-'}`,
@@ -2803,7 +2807,7 @@
         ? sorted.filter(reserva => {
           const piloto = reserva.nomePiloto || reserva.nome || '';
           const responsavel = reserva.responsavelPiloto || reserva.nomeResponsavel || reserva.responsavel || '';
-          const pitId = reserva.pitId || '';
+          const pitId = getReservaPitId(reserva);
           const servico = reserva.servico || '';
           const reservaAtual = `${formatDateForSummary(reserva.data)} - ${formatPeriod(reserva.periodo)}`;
           const contato = reserva.contato || [reserva.email, reserva.telefone].filter(Boolean).join(' | ');
@@ -2850,7 +2854,7 @@
         responsavelCell.textContent = reserva.responsavelPiloto || reserva.nomeResponsavel || reserva.responsavel || '';
 
         const pitIdCell = document.createElement('td');
-        pitIdCell.textContent = reserva.pitId || '-';
+        pitIdCell.textContent = getReservaPitId(reserva) || '-';
 
         const serviceCell = document.createElement('td');
         serviceCell.textContent = reserva.servico;

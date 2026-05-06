@@ -295,6 +295,10 @@
         .replace(/[^A-Z0-9-_]/g, '');
     }
 
+    function getReservaPitId(reserva) {
+      return normalizePitId(reserva && (reserva.pitId || reserva.id));
+    }
+
     function normalizeApiBase(value) {
       if (!value || typeof value !== 'string') {
         return '';
@@ -508,18 +512,24 @@
     }
 
     async function loadReservaByPitId(pitId) {
+      const normalized = normalizePitId(pitId);
+      const directResponse = await fetchWithApi(`/api/reservas/pit/${encodeURIComponent(normalized)}`);
+      if (directResponse.ok) {
+        const payload = await directResponse.json();
+        return payload && payload.reserva ? payload.reserva : null;
+      }
+
       const response = await fetchWithApi('/api/reservas');
       if (!response.ok) {
         throw new Error(await parseApiError(response, 'Nao foi possivel carregar reservas.'));
       }
 
       const reservas = await response.json();
-      const normalized = normalizePitId(pitId);
       if (!Array.isArray(reservas)) {
         return null;
       }
 
-      return reservas.find(item => normalizePitId(item && item.pitId) === normalized) || null;
+      return reservas.find(item => getReservaPitId(item) === normalized) || null;
     }
 
     async function tryUpdateBriefing(reservaId, payload) {
@@ -603,7 +613,7 @@
         return;
       }
 
-      if (!state.selectedReserva || normalizePitId(state.selectedReserva.pitId) !== pitId) {
+      if (!state.selectedReserva || getReservaPitId(state.selectedReserva) !== pitId) {
         setFeedback(formFeedback, 'error', 'Busque um Pit ID valido da Etapa 1 antes de enviar o briefing.');
         return;
       }

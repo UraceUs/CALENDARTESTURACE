@@ -5,6 +5,14 @@ function createInMemoryRepo() {
   const map = new Map();
 
   return {
+    async listReservas() {
+      return Array.from(map.entries()).map(([id, data]) => ({
+        id,
+        pitId: id,
+        ...data
+      }));
+    },
+
     async getByPitId(pitId) {
       const data = map.get(pitId);
       return {
@@ -129,6 +137,39 @@ describe('PATCH /api/reservas/pit/:pitId', () => {
     expect(repo._map.get('PIT-STAGE-2').bookingProgress).toBe(100);
     expect(repo._map.get('PIT-STAGE-2').email).toBe('joao@example.com');
     expect(repo._map.get('PIT-STAGE-2').servico).toBe('Summer Camp');
+  });
+
+  it('deve listar reservas em GET /api/reservas com pitId consistente', async () => {
+    await request(app)
+      .patch('/api/reservas/pit/PIT-LIST-1')
+      .send({
+        etapa: 1,
+        data: '2026-09-01',
+        periodo: 'manha',
+        servico: 'Summer Camp'
+      });
+
+    const response = await request(app).get('/api/reservas');
+    expect(response.status).toBe(200);
+    expect(Array.isArray(response.body)).toBe(true);
+    const found = response.body.find(item => item.pitId === 'PIT-LIST-1');
+    expect(found).toBeTruthy();
+    expect(found.id).toBe('PIT-LIST-1');
+  });
+
+  it('deve consultar reserva por GET /api/reservas/pit/:pitId', async () => {
+    await request(app)
+      .patch('/api/reservas/pit/PIT-LOOKUP-1')
+      .send({
+        etapa: 1,
+        data: '2026-10-05',
+        periodo: 'tarde',
+        servico: 'Professional Coaching'
+      });
+
+    const response = await request(app).get('/api/reservas/pit/PIT-LOOKUP-1');
+    expect(response.status).toBe(200);
+    expect(response.body.reserva.pitId).toBe('PIT-LOOKUP-1');
   });
 
   it('deve retornar 404 na etapa 2 se pitId nao existir', async () => {

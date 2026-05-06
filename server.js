@@ -8,6 +8,7 @@ const PORT = Number(process.env.PORT || 3000);
 const RESERVAS_COLLECTION = 'reservas';
 const ALLOWED_PERIODS = new Set(['manha', 'tarde']);
 const ALLOWED_EXPERIENCE = new Set(['Sim', 'Nao']);
+const DEFAULT_SERVICES = ['Professional Coaching', 'Summer Camp', 'Trackside Support'];
 
 function normalizePitId(value) {
   return String(value || '')
@@ -15,6 +16,45 @@ function normalizePitId(value) {
     .toUpperCase()
     .replace(/\s+/g, '-')
     .replace(/[^A-Z0-9-_]/g, '');
+}
+
+function toIsoStringIfPossible(value) {
+  if (!value) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (typeof value.toDate === 'function') {
+    try {
+      return value.toDate().toISOString();
+    } catch (error) {
+      return value;
+    }
+  }
+
+  return value;
+}
+
+function normalizeReservaRecord(docId, data) {
+  const raw = data || {};
+  const canonicalPitId = normalizePitId(raw.pitId || raw.pitchId || docId);
+
+  return {
+    ...raw,
+    id: canonicalPitId,
+    pitId: canonicalPitId,
+    createdAt: toIsoStringIfPossible(raw.createdAt),
+    updatedAt: toIsoStringIfPossible(raw.updatedAt),
+    stageOneCompletedAt: toIsoStringIfPossible(raw.stageOneCompletedAt),
+    stageTwoCompletedAt: toIsoStringIfPossible(raw.stageTwoCompletedAt)
+  };
 }
 
 function isNonEmptyString(value, min = 1, max = 255) {
@@ -195,8 +235,19 @@ function createFirestoreReservaRepository() {
       };
     }
 
-    const querySnap = await collection.where('pitId', '==', pitId).limit(1).get();
-    if (querySnap.empty) {
+    const pitQuerySnap = await collection.where('pitId', '==', pitId).limit(1).get();
+    if (!pitQuerySnap.empty) {
+      const pitDoc = pitQuerySnap.docs[0];
+      return {
+        exists: true,
+        id: pitDoc.id,
+        ref: pitDoc.ref,
+        data: pitDoc.data() || {}
+      };
+    }
+
+    const pitchQuerySnap = await collection.where('pitchId', '==', pitId).limit(1).get();
+    if (pitchQuerySnap.empty) {
       return {
         exists: false,
         id: pitId,
@@ -205,13 +256,18 @@ function createFirestoreReservaRepository() {
       };
     }
 
-    const legacyDoc = querySnap.docs[0];
+    const legacyDoc = pitchQuerySnap.docs[0];
     return {
       exists: true,
       id: legacyDoc.id,
       ref: legacyDoc.ref,
       data: legacyDoc.data() || {}
     };
+  }
+
+  async function listReservas() {
+    const snapshot = await collection.get();
+    return snapshot.docs.map(doc => normalizeReservaRecord(doc.id, doc.data() || {}));
   }
 
   async function upsertStageOne(pitId, stageData) {
@@ -288,6 +344,7 @@ function createFirestoreReservaRepository() {
 
   return {
     getByPitId,
+    listReservas,
     upsertStageOne,
     updateStageTwo
   };
@@ -319,7 +376,93 @@ function createApp(options = {}) {
       return;
     }
 
+    if (req.method === 'GET' && requestUrl.pathname === '/api/reservas') {
+      try {
+        const reservas = await repo.listReservas();
+        sendJson(res, 200, Array.isArray(reservas) ? reservas : []);
+      } catch (error) {
+        console.error('Erro ao listar reservas:', error);
+        sendJson(res, 500, {
+          error: {
+            code: 'INTERNAL_ERROR',
+            message: 'Nao foi possivel consultar reservas no Firestore.',
+            details: []
+          }
+        });
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && requestUrl.pathname === '/api/disponibilidade') {
+      sendJson(res, 200, []);
+      return;
+    }
+
+    if (req.method === 'GET' && requestUrl.pathname === '/api/capacidade') {
+      sendJson(res, 200, []);
+      return;
+    }
+
+    if (req.method === 'GET' && requestUrl.pathname === '/api/config/servicos') {
+      sendJson(res, 200, {
+        allServices: [...DEFAULT_SERVICES],
+        enabledServices: [...DEFAULT_SERVICES],
+        serviceIcons: {}
+      });
+      return;
+    }
+
+    if (req.method === 'GET' && requestUrl.pathname === '/api/config/periodos') {
+      sendJson(res, 200, {
+        allPeriods: ['manha', 'tarde'],
+        enabledPeriods: ['manha', 'tarde']
+      });
+      return;
+    }
+
     const pitMatch = requestUrl.pathname.match(/^\/api\/reservas\/pit\/([A-Za-z0-9-_]+)$/);
+    if (pitMatch && req.method === 'GET') {
+      const pitId = normalizePitId(decodeURIComponent(pitMatch[1] || ''));
+      if (!pitId) {
+        sendJson(res, 400, {
+          error: {
+            code: 'INVALID_PIT_ID',
+            message: 'Pit ID invalido.',
+            details: []
+          }
+        });
+        return;
+      }
+
+      try {
+        const found = await repo.getByPitId(pitId);
+        if (!found || !found.exists) {
+          sendJson(res, 404, {
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Reserva nao encontrada para o pitId informado.',
+              details: []
+            }
+          });
+          return;
+        }
+
+        sendJson(res, 200, {
+          reserva: normalizeReservaRecord(found.id, found.data || {})
+        });
+      } catch (error) {
+        console.error('Erro ao buscar reserva por pitId:', error);
+        sendJson(res, 500, {
+          error: {
+            code: 'INTERNAL_ERROR',
+            message: 'Nao foi possivel consultar reserva por pitId.',
+            details: []
+          }
+        });
+      }
+      return;
+    }
+
     if (req.method === 'PATCH' && pitMatch) {
       const pitId = normalizePitId(decodeURIComponent(pitMatch[1] || ''));
       if (!pitId) {
@@ -375,11 +518,7 @@ function createApp(options = {}) {
         try {
           const updated = await repo.upsertStageOne(pitId, validation.data);
           sendJson(res, 200, {
-            reserva: {
-              id: pitId,
-              ...(updated && updated.data ? updated.data : {}),
-              pitId
-            },
+            reserva: normalizeReservaRecord(pitId, (updated && updated.data) || {}),
             meta: {
               stage: 1,
               key: 'pitId'
@@ -424,11 +563,7 @@ function createApp(options = {}) {
         }
 
         sendJson(res, 200, {
-          reserva: {
-            id: pitId,
-            ...(updated && updated.data ? updated.data : {}),
-            pitId
-          },
+          reserva: normalizeReservaRecord(pitId, (updated && updated.data) || {}),
           meta: {
             stage: 2,
             key: 'pitId'
