@@ -619,6 +619,53 @@
       gap: 8px;
     }
 
+    .admin-notifications {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border: 1px solid #f5c8cd;
+      background: #fff7f8;
+      border-radius: 10px;
+    }
+
+    .admin-notifications-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .admin-notifications-title {
+      font-size: 0.86rem;
+      font-weight: 700;
+      color: #8f2330;
+      margin: 0;
+    }
+
+    .admin-notifications-clear {
+      border: 1px solid #e2aeb6;
+      background: #fff;
+      color: #8f2330;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.74rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .admin-notifications-list {
+      margin: 0;
+      padding-left: 18px;
+      display: grid;
+      gap: 4px;
+      color: #6f2a33;
+      font-size: 0.82rem;
+    }
+
+    .admin-notifications-list li {
+      line-height: 1.25;
+    }
+
     .mail-status {
       display: none;
     }
@@ -1148,6 +1195,13 @@
           </div>
         </div>
         <p class="feedback" id="reservationsFeedback" aria-live="polite"></p>
+        <div id="adminNotifications" class="admin-notifications" style="display:none;">
+          <div class="admin-notifications-head">
+            <p class="admin-notifications-title">Notificações do Driver Briefing</p>
+            <button type="button" id="clearAdminNotificationsBtn" class="admin-notifications-clear">Limpar histórico</button>
+          </div>
+          <ul id="adminNotificationsList" class="admin-notifications-list"></ul>
+        </div>
 
         <!-- Modal Mudar Reserva -->
         <div id="moveModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:1000; align-items:center; justify-content:center;">
@@ -1259,6 +1313,9 @@
     const periodVisibilityFeedback = document.getElementById('periodVisibilityFeedback');
 
     const reservationsFeedback = document.getElementById('reservationsFeedback');
+    const adminNotifications = document.getElementById('adminNotifications');
+    const adminNotificationsList = document.getElementById('adminNotificationsList');
+    const clearAdminNotificationsBtn = document.getElementById('clearAdminNotificationsBtn');
     const reservationTableBody = document.getElementById('reservationTableBody');
     const layoutEditorToggle = document.getElementById('layoutEditorToggle');
 
@@ -1277,6 +1334,8 @@
       layoutEditorEnabled: false,
       draggedLayoutId: ''
     };
+
+    const ADMIN_NOTIFICATION_HISTORY_KEY = 'calendar_admin_notifications_history';
 
     let layoutPersistTimer = null;
 
@@ -2615,6 +2674,54 @@
       }
     }
 
+    function loadAdminNotificationHistory() {
+      try {
+        const raw = localStorage.getItem(ADMIN_NOTIFICATION_HISTORY_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (error) {
+        return [];
+      }
+    }
+
+    function saveAdminNotificationHistory(list) {
+      try {
+        const safe = Array.isArray(list) ? list.slice(-100) : [];
+        localStorage.setItem(ADMIN_NOTIFICATION_HISTORY_KEY, JSON.stringify(safe));
+      } catch (error) {
+        console.error('Falha ao salvar historico de notificacoes do admin:', error);
+      }
+    }
+
+    function mergeAdminNotifications() {
+      const history = loadAdminNotificationHistory();
+      const incoming = pullAdminNotifications();
+      const merged = [...history, ...incoming].slice(-100);
+      saveAdminNotificationHistory(merged);
+      return merged;
+    }
+
+    function renderAdminNotifications(list) {
+      const notifications = Array.isArray(list) ? list : [];
+      adminNotificationsList.innerHTML = '';
+
+      if (notifications.length === 0) {
+        adminNotifications.style.display = 'none';
+        return;
+      }
+
+      const latest = notifications.slice(-12).reverse();
+      latest.forEach(item => {
+        const li = document.createElement('li');
+        const when = item && item.createdAt ? new Date(item.createdAt).toLocaleString('pt-BR') : '';
+        const pit = item && item.pitId ? ` | Pit ID: ${item.pitId}` : '';
+        li.textContent = `${when}${pit} | ${item && item.message ? item.message : 'Erro nao especificado.'}`;
+        adminNotificationsList.appendChild(li);
+      });
+
+      adminNotifications.style.display = 'block';
+    }
+
     function mergeLocalBriefingData(reservas) {
       const cache = loadLocalBriefingCache();
       return (Array.isArray(reservas) ? reservas : []).map(item => {
@@ -3267,7 +3374,8 @@
         }
         renderCalendarMonths();
         await refreshAll();
-        const notifications = pullAdminNotifications();
+        const notifications = mergeAdminNotifications();
+        renderAdminNotifications(notifications);
         if (notifications.length > 0) {
           const latest = notifications[notifications.length - 1];
           const pit = latest && latest.pitId ? ` (Pit ID: ${latest.pitId})` : '';
@@ -3283,6 +3391,13 @@
         setFeedback(reservationsFeedback, 'error', toUserMessage(error, 'Falha ao carregar painel admin.'));
       }
     }
+
+    clearAdminNotificationsBtn.addEventListener('click', () => {
+      saveAdminNotificationHistory([]);
+      adminNotificationsList.innerHTML = '';
+      adminNotifications.style.display = 'none';
+      setFeedback(reservationsFeedback, 'success', 'Historico de notificacoes limpo.');
+    });
 
     init();
   </script>
