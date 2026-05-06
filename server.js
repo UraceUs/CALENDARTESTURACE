@@ -777,6 +777,11 @@ function createApp(options = {}) {
     if (req.method === 'POST' && resendMatch) {
       const reservaId = decodeURIComponent(resendMatch[1] || '');
       const pitId = normalizePitId(reservaId);
+      console.log('DEBUG: rota resend-confirmation acionada com parametro:', {
+        rawParam: resendMatch[1] || '',
+        decodedParam: reservaId,
+        normalizedPitId: pitId
+      });
       if (!pitId) {
         sendJson(res, 400, {
           error: {
@@ -791,6 +796,7 @@ function createApp(options = {}) {
       try {
         const found = await repo.getByPitId(pitId);
         if (!found || !found.exists) {
+          console.log('DEBUG: resend-confirmation nao encontrou reserva para pitId:', pitId);
           sendJson(res, 404, {
             error: {
               code: 'NOT_FOUND',
@@ -802,8 +808,19 @@ function createApp(options = {}) {
         }
 
         const reserva = normalizeReservaRecord(found.id, found.data || {});
+        console.log('DEBUG: resend-confirmation encontrou reserva:', {
+          pitId,
+          reservaId: reserva.id,
+          email: reserva.email || null
+        });
         const emailConfirmation = await emailService.sendStageTwoConfirmation(reserva);
         const supportNotification = await emailService.sendSupportNotification(reserva);
+
+        console.log('DEBUG: resend-confirmation resultado de envio:', {
+          pitId,
+          emailConfirmation,
+          supportNotification
+        });
 
         sendJson(res, 200, {
           ok: Boolean(emailConfirmation && emailConfirmation.sent) && Boolean(supportNotification && supportNotification.sent),
@@ -944,6 +961,10 @@ function createApp(options = {}) {
             to: reserva.email || validation.data.email
           });
           emailConfirmation = await emailService.sendStageTwoConfirmation(reserva);
+          console.log('DEBUG: etapa 2 resultado do envio de email:', {
+            pitId,
+            emailConfirmation
+          });
 
           if (emailConfirmation && emailConfirmation.sent) {
             const sentAt = String(emailConfirmation.sentAt || new Date().toISOString());
