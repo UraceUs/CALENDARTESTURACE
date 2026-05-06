@@ -137,6 +137,12 @@
     .feedback.info { color: #2a2a2a; }
     .feedback.success { color: #116b32; }
     .feedback.error { color: #ff2f3e; }
+    #formFeedback,
+    #formFeedback.feedback.info,
+    #formFeedback.feedback.success,
+    #formFeedback.feedback.error {
+      color: #fff;
+    }
     @media(max-width: 900px) {
       .cards-row {
         flex-direction: column;
@@ -653,6 +659,16 @@
 
         if (emailConfirmation && emailConfirmation.skipped && emailConfirmation.reason === 'ALREADY_SENT') {
           setFeedback(formFeedback, 'success', 'Briefing enviado com sucesso. A confirmacao deste Pit ID ja havia sido enviada anteriormente.');
+          return;
+        }
+
+        if (emailConfirmation && emailConfirmation.sent === false) {
+          const reason = emailConfirmation.error || emailConfirmation.reason || 'UNKNOWN';
+          setFeedback(
+            formFeedback,
+            'error',
+            `Briefing atualizado, mas o e-mail de confirmacao nao foi enviado (${reason}). Tente novamente em instantes ou use o reenvio no Admin.`
+          );
           return;
         }
 
