@@ -17,6 +17,15 @@ Sistema de agendamento para karting profissional (U-RACE) com fluxo em duas etap
 
 ```
 server.js                          # Backend Node.js (HTTP puro, sem framework)
+lib/
+  sdr/                             # Motor de regras do SDR (entrada no Kommo + robô chat)
+    regras.js                      # Parametrização: palavras-chave, pesos, SLAs, textos
+    classificador.js               # Leitura de sinais da mensagem
+    triagem.js                     # Decide o que vira card no Kommo
+    robochat.js                    # Decide resposta, silêncio e escalonamento
+    index.js                       # avaliarInteracao() + validação do payload
+docs/
+  kommo-sdr-regras.md              # Regras de negócio do Kommo/SDR (documento oficial)
 public/
   Calendar.html                    # Etapa 1 — seleção de data/período/serviço + geração de Pit ID
   DriverBriefing.html              # Etapa 2 — preenchimento de dados do piloto
@@ -253,6 +262,38 @@ Campos opcionais aceitos no `POST /api/reservas` para preencher a descrição do
 
 ---
 
+## Kommo + Robô Chat como SDR
+
+Regras completas em [`docs/kommo-sdr-regras.md`](docs/kommo-sdr-regras.md).
+
+**Princípio:** todas as mensagens continuam chegando por todos os canais e ficam
+no inbox do Kommo. O **card** só é criado quando a interação tem sinal comercial —
+nunca para toda e qualquer interação.
+
+Resumo:
+
+- **Cria card:** preço, disponibilidade, como contratar, pedido de humano, demanda
+  corporativa, tema sensível, Pit ID informado, reserva das Etapas 1 e 2, formulário,
+  chamada perdida, ou soma de sinais fracos ≥ 40 pontos.
+- **Não cria card:** saudação isolada, agradecimento, spam/fornecedor, grupo ou lista
+  de transmissão, contato interno, mídia sem texto, pergunta operacional genérica e
+  contato que já tem card aberto (anexa, não duplica).
+- **Robô chat (SDR):** qualifica na ordem serviço → data → período → pilotos →
+  experiência → nome → contato; nunca inventa preço ou disponibilidade; cala quando
+  um humano assume a conversa; follow-up em +30 min, +24 h e +72 h.
+- **Escalona para humano:** lead qualificado, pedido explícito, tema sensível, lead
+  insatisfeito, falha técnica (SLA 5 min úteis); negociação, corporativo, falta de
+  entendimento e reserva parada (SLA 15 min úteis).
+
+O Salesbot do Kommo consome a decisão pelo endpoint `POST /api/sdr/avaliar`.
+
+### Variáveis do SDR
+
+- `SDR_WEBHOOK_TOKEN` (opcional — quando definido, `POST /api/sdr/avaliar` exige
+  `Authorization: Bearer <token>`)
+
+---
+
 ## Deploy
 
 ### Frontend — GitHub Pages
@@ -307,6 +348,13 @@ O repositório inclui `render.yaml` para deploy via Blueprint no Render.
 | `PATCH` | `/api/reservas/pit/:pitId` | Atualiza uma reserva pelo Pit ID — aceita `etapa=1` ou `etapa=2` |
 | `POST` | `/api/reservas/:id/resend-confirmation` | Reenvia o e-mail de confirmação da Etapa 2 (usado pelo admin) |
 
+### SDR (Kommo + robô chat)
+
+| Método | Rota | Descrição |
+|---|---|---|
+| `POST` | `/api/sdr/avaliar` | Avalia uma interação: decide criação de card, resposta do robô e escalonamento |
+| `GET` | `/api/sdr/regras` | Retorna a parametrização ativa das regras do SDR |
+
 ### Disponibilidade e configuração
 
 | Método | Rota | Descrição |
@@ -325,8 +373,12 @@ npm test
 ```
 
 - `tests/api/` — Testes de integração com Jest (rotas, Firestore mockado, e-mail mockado)
+- `tests/api/sdr.regras.test.js` — Regras de entrada no Kommo e do robô chat
+- `tests/api/sdr.route.test.js` — Endpoints `/api/sdr/*`
 - `tests/e2e/` — Testes E2E com Playwright
-- Cobertura atual: 10/10 testes de API passando
+
+Os testes `health.api.test.js`, `server.api.test.js` e `notfound.api.test.js`
+acessam o backend publicado no Render e exigem rede.
 
 ---
 

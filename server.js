@@ -6,6 +6,7 @@ const dns = require('dns').promises;
 const admin = require('firebase-admin');
 const nodemailer = require('nodemailer');
 const { google } = require('googleapis');
+const sdr = require('./lib/sdr');
 
 const PORT = Number(process.env.PORT || 3000);
 const RESERVAS_COLLECTION = 'reservas';
@@ -1231,6 +1232,22 @@ function createFirestoreConfigRepository() {
   };
 }
 
+function autorizarWebhookSdr(req, env = process.env) {
+  const esperado = env.SDR_WEBHOOK_TOKEN;
+  if (!esperado) {
+    return { ok: true };
+  }
+
+  const header = req.headers.authorization || '';
+  const recebido = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+
+  if (recebido && recebido === esperado) {
+    return { ok: true };
+  }
+
+  return { ok: false };
+}
+
 function createApp(options = {}) {
   const repo = options.repo || createFirestoreReservaRepository();
   const configRepo = options.configRepo || createFirestoreConfigRepository();
@@ -1256,6 +1273,69 @@ function createApp(options = {}) {
 
     if (req.method === 'GET' && requestUrl.pathname === '/health') {
       sendJson(res, 200, { ok: true, status: 'healthy' });
+      return;
+    }
+
+    if (req.method === 'GET' && requestUrl.pathname === '/api/sdr/regras') {
+      sendJson(res, 200, { ok: true, regras: sdr.descreverRegras() });
+      return;
+    }
+
+    if (req.method === 'POST' && requestUrl.pathname === '/api/sdr/avaliar') {
+      if (!autorizarWebhookSdr(req).ok) {
+        sendJson(res, 401, {
+          ok: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'Token invalido para o webhook do SDR.',
+            details: []
+          }
+        });
+        return;
+      }
+
+      let payload;
+      try {
+        payload = await parseJsonBody(req);
+      } catch (error) {
+        sendJson(res, 400, {
+          ok: false,
+          error: {
+            code: 'INVALID_JSON',
+            message: 'Corpo da requisicao nao e um JSON valido.',
+            details: []
+          }
+        });
+        return;
+      }
+
+      const erros = sdr.validarEvento(payload);
+      if (erros.length > 0) {
+        sendJson(res, 400, {
+          ok: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Evento invalido para avaliacao do SDR.',
+            details: erros
+          }
+        });
+        return;
+      }
+
+      try {
+        const decisao = sdr.avaliarInteracao(payload);
+        sendJson(res, 200, { ok: true, ...decisao });
+      } catch (error) {
+        console.error('Erro ao avaliar interacao do SDR:', error);
+        sendJson(res, 500, {
+          ok: false,
+          error: {
+            code: 'INTERNAL_ERROR',
+            message: 'Erro interno ao avaliar a interacao.',
+            details: [error && error.message ? error.message : 'UNKNOWN']
+          }
+        });
+      }
       return;
     }
 
@@ -1782,6 +1862,7 @@ if (require.main === module) {
 
 module.exports = {
   createApp,
+  sdr,
   createEmailService,
   createFirestoreReservaRepository,
   normalizePitId,
