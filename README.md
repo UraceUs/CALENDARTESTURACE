@@ -1,6 +1,6 @@
-# Calendar — U-RACE Booking System
+# SDR Agent U-RACE
 
-Sistema de agendamento para karting profissional (U-RACE) com fluxo em duas etapas, painel administrativo e integrações com Firestore, e-mail, Asana e DocuSign.
+Sistema de agendamento e pré-vendas para karting profissional (U-RACE): reserva em duas etapas, painel administrativo, SDR automatizado (Kommo + robô chat) e integrações com Firestore, e-mail, Asana e DocuSign.
 
 ## URLs de produção
 
@@ -10,6 +10,12 @@ Sistema de agendamento para karting profissional (U-RACE) com fluxo em duas etap
 | Driver Briefing (Etapa 2) | `https://uraceus.github.io/CALENDARTESTURACE/DriverBriefing.html` |
 | Painel Admin | `https://uraceus.github.io/CALENDARTESTURACE/Admin.html` |
 | Backend API | `https://calendar-backend-w6wm.onrender.com` |
+
+> As URLs acima ainda usam os slugs antigos (`CALENDARTESTURACE` no GitHub Pages e
+> `calendar-backend` no Render). O projeto passou a se chamar **SDR Agent U-RACE**, mas os
+> endereços só mudam quando o repositório e o serviço forem renomeados nas respectivas
+> plataformas — renomeá-los aqui quebraria os links já enviados a clientes e os que o robô
+> chat envia (`lib/sdr/regras.js` → `LINKS`).
 
 ---
 

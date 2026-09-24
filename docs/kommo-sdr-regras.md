@@ -1,4 +1,4 @@
-# Kommo + Robô Chat como SDR — Regras Operacionais
+# SDR Agent U-RACE — Regras Operacionais (Kommo + Robô Chat)
 
 Este documento define **o que entra no Kommo** (vira card) e **como o robô chat
 atua como SDR**: a quem responde, como responde e quando aciona um humano.

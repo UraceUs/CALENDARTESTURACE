@@ -1267,7 +1267,7 @@ function createApp(options = {}) {
     const requestUrl = new URL(req.url, 'http://localhost');
 
     if (req.method === 'GET' && requestUrl.pathname === '/') {
-      sendJson(res, 200, { ok: true, service: 'calendar-backend' });
+      sendJson(res, 200, { ok: true, service: 'sdr-agent-urace-backend' });
       return;
     }
 
