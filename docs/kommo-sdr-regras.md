@@ -149,22 +149,59 @@ O motor devolve esses campos preenchidos em `kommo.campos`.
 - Sempre empurra para o funil oficial: Etapa 1 no `Calendar.html` (gera o Pit ID)
   → Etapa 2 no `DriverBriefing.html`.
 
-**Ordem de qualificação (SDR):**
+**Ordem de qualificação (SDR)** — experiência decide o roteamento, origem decide
+o produto, e só então vem o resto (modelo herdado do projeto Chase):
 
-1. Serviço (Professional Coaching / Summer Camp / Trackside Support)
-2. Data desejada
-3. Período (manhã / tarde)
-4. Quantidade de pilotos
-5. Experiência prévia
-6. Nome completo
-7. E-mail de contato
+1. **Experiência**, classificação A/B/C/D
+   (A nunca andou · B kart de aluguel · C já correu · D compete atualmente)
+2. **Origem** — local de Orlando ou viajante
+3. Serviço (Professional Coaching / Summer Camp / Trackside Support)
+4. Data desejada
+5. Período (manhã / tarde)
+6. Quantidade de pilotos
+7. Nome completo
+8. E-mail de contato
 
-**Cadência de follow-up:** +30 min → +24 h → +72 h. Sem resposta após a terceira
-tentativa, o card vai para `Perdido` com motivo "sem resposta".
+O lead pode responder a letra ou descrever em prosa; o robô classifica sozinho
+nos dois casos. **Nunca falar de valor antes da classificação registrada** — o
+programa, e o preço, mudam com o nível do piloto.
 
-**Horário:** o robô responde 24/7. Fora de seg–sáb, 9h–19h (America/Sao_Paulo),
-avisa que uma pessoa responde no próximo horário útil e a tarefa do humano já
-nasce com prazo a partir da abertura.
+**Lead que já conversou nunca recebe a abertura de novo.** Reapresentar o menu a
+quem já respondeu é como o cliente aprende que ninguém escutou.
+
+**Frases proibidas** (`NUNCA_DIZER`, verificadas no envio e nos testes): cada uma
+custou um incidente real.
+
+| Nunca dizer | Porque |
+|---|---|
+| "all-inclusive" / "tudo incluso" | driver pass e pit pass são pagos direto à pista |
+| "come by" / "passe por aqui" / "apareça quando quiser" | todo serviço é por agendamento |
+| "reserva confirmada" / "está reservado" antes do pagamento | reserva só vale com pagamento compensado |
+| "vandalismo" | o depósito se explica de forma simples e neutra |
+| "é só um test drive" | nunca diminuir o programa de entrada |
+| "garanto sua vaga" | vaga, equipamento e resultado não são prometidos pelo robô |
+
+Sem emoji e sem travessão nas mensagens ao lead (o travessão denuncia texto de IA);
+o motor remove os dois antes de enviar.
+
+**Cadência de follow-up** (decisão C11 do Chase): +2 h → +24 h → +3 dias → +7 dias,
+depois fecha como `Perdido` por falta de resposta. Quando o que foi enviado é um
+link de programa/calendário, a trilha é +10 min → +24 h → +3 dias → +7 dias.
+Nunca duas trilhas no mesmo lead: resposta do lead ou escalonamento mata a trilha
+na hora.
+
+**Horário:** o robô responde 24/7. Fora da janela de atendimento humano, avisa que
+uma pessoa responde no próximo horário útil e a tarefa do humano já nasce com
+prazo a partir da abertura. O fuso é o de Orlando (`America/New_York`), com
+horário de verão calculado, não offset fixo.
+
+> ⚠️ **Os horários estão pendentes de confirmação.** A janela configurada
+> (quarta a domingo, 9h–18h de Orlando) veio do arquivo do projeto Chase, e pela
+> decisão D-2026-08-31 aquele material não vale como regra até ser reconfirmado.
+> Há ainda um conflito conhecido: o horário de **operação da pista** confirmado
+> por Italo em atendimento real foi **quarta a domingo, 8h–13h**. Confirme os dois
+> (atendimento humano e operação) antes de publicar o robô — `descreverRegras()`
+> devolve `confirmacaoPendente: true` enquanto isso não for feito.
 
 ### 2.4 Quando e como o robô aciona um humano
 
@@ -172,6 +209,8 @@ nasce com prazo a partir da abertura.
 
 | Motivo | Prioridade | SLA da tarefa |
 |---|---|---|
+| `SINAL_CONVERSAO` — lead disse que quer avançar | Alta | 5 min úteis |
+| `PILOTO_COMPETIDOR` — classificação D (compete hoje) | Alta | 5 min úteis |
 | `LEAD_QUALIFICADO` — qualificação completa | Alta | 5 min úteis |
 | `PEDIDO_HUMANO` — lead pediu uma pessoa | Alta | 5 min úteis |
 | `TEMA_SENSIVEL` — jurídico, saúde, cobrança, imprensa | Alta | 5 min úteis |
@@ -193,7 +232,22 @@ nasce com prazo a partir da abertura.
 6. Notifica o responsável e o grupo comercial.
 7. **Silencia o robô** naquele card — a conversa passa a ser da pessoa.
 
-**SLAs gerais:** primeira resposta do robô em até 30 s; handoff registrado em até
+**Lead que sinaliza conversão nunca espera atrás de pergunta de formulário.**
+"Let's do it", "quando ele começa", "me manda o link" → escala na mesma resposta,
+com o que falta declarado no briefing (`dadosFaltantes`). Piloto que compete
+(classificação D) vai direto para o time, sem qualificação e sem pedir visita ao
+site.
+
+**Primeiro aviso não tem cooldown; o teto vale só para os re-alertas:** até 4
+re-alertas, depois vira tarefa no Kommo. Lead escalado que manda mensagem
+substantiva gera reaviso imediato.
+
+**A notificação ao humano sai fora do caminho da resposta ao lead**
+(`notificacaoAssincrona: true`). Avisar humanos de forma bloqueante consumia a
+janela de ~58 s do Salesbot do Kommo e deixava o lead sem resposta.
+
+**SLAs gerais:** primeira resposta do robô em até 30 s; notificação ao humano
+disparada em até 10 s, fora do caminho da resposta; handoff registrado em até
 5 min; retomada de reserva parada em 24 h.
 
 ---
@@ -297,6 +351,11 @@ Proteção opcional: defina `SDR_WEBHOOK_TOKEN` no ambiente e envie
    - `robo.silenciarBot = true` → marcar o card para o bot não responder mais.
    - `robo.followUp.agendar = true` → agendar disparo em `emMinutos`;
      `acaoFinal = marcar_perdido_sem_resposta` → fechar como perdido.
+> **HTTP 200/202 nunca prova entrega.** O Kommo devolve 202 e não renderiza nada
+> no chat quando o modo de exibição do Salesbot está errado. Só confirmação
+> visual no chat do lead + log contam como entrega; trate `sent=true` como
+> "aceito para envio", não como "entregue".
+
 3. **Site → Kommo:** ao concluir a Etapa 1 e a Etapa 2, enviar os eventos
    `reserva_etapa1` e `reserva_etapa2` para o mesmo endpoint, com o `pitId`.
 4. **Reservas paradas:** rotina diária envia `reserva_etapa1_parada` para as
@@ -311,8 +370,49 @@ Proteção opcional: defina `SDR_WEBHOOK_TOKEN` no ambiente e envie
 | Textos do robô | `lib/sdr/regras.js` | `MENSAGENS` |
 | Perguntas de qualificação | `lib/sdr/regras.js` | `CAMPOS_QUALIFICACAO` |
 | Horário comercial e SLAs | `lib/sdr/regras.js` | `HORARIO_COMERCIAL`, `SLA` |
-| Cadência de follow-up | `lib/sdr/regras.js` | `FOLLOW_UP_MINUTOS` |
+| Cadência de follow-up | `lib/sdr/regras.js` | `FOLLOW_UP_MINUTOS`, `FOLLOW_UP_POS_LINK_MINUTOS` |
+| Frases proibidas | `lib/sdr/regras.js` | `NUNCA_DIZER` |
+| Classificação A/B/C/D | `lib/sdr/regras.js` | `CLASSIFICACAO_EXPERIENCIA` |
+| Teto de re-alertas | `lib/sdr/regras.js` | `MAX_REALERTAS` |
 | Janela de reabertura de card | `lib/sdr/regras.js` | `JANELA_REABERTURA_DIAS` |
 | Estágios do pipeline | `lib/sdr/regras.js` | `ESTAGIOS` |
 
 Testes: `npx jest tests/api/sdr.regras.test.js tests/api/sdr.route.test.js`.
+
+---
+
+## Parte 4 — O que veio do projeto Chase
+
+O Chase foi o agente de vendas da U-RACE (Kommo, Instagram e WhatsApp),
+encerrado em 27/08/2026. As regras abaixo vieram do registro daquele projeto e
+estão implementadas aqui porque cada uma corrigiu um incidente real:
+
+| Regra | Incidente que a originou |
+|---|---|
+| Toda decisão produz uma resposta; o lead nunca fica mudo | lead escalado ficou sem resposta por um `return` |
+| HTTP 200/202 não prova entrega | Kommo devolvia 202 sem renderizar nada no chat |
+| Não reapresentar o menu a lead retornante | lead que respondeu "A" recebeu o menu inteiro 3 dias depois |
+| Nunca dizer "come by" (serviço é 100% agendado) | resposta convidou o lead a aparecer sem hora marcada |
+| Notificação ao humano fora do caminho da resposta | aviso bloqueante estourava a janela de ~58 s do Salesbot |
+| Teto de re-alertas com queda para tarefa no Kommo | alarme repetindo sem limite, e o oposto: lead escalado sem reaviso |
+| Escalar em vez de deduzir; não inventar dado | invariante de segurança do projeto |
+| Sinal de conversão escala na hora, sem formulário | lead pronto para fechar ficou preso atrás de pergunta de cadastro |
+| Classificação antes de qualquer valor | leads pediam preço antes de haver programa definido |
+
+### Fatos que ainda precisam ser confirmados
+
+Pela decisão **D-2026-08-31**, o material arquivado do Chase **não vale como
+regra** até ser reescrito com fonte confirmada. Estes pontos estão no código
+como parâmetro, marcados, e não como verdade:
+
+| Ponto | Valor provisório | Pendência |
+|---|---|---|
+| Horário de atendimento humano | quarta a domingo, 9h–18h (Orlando) | confirmar dias e faixa |
+| Horário de operação da pista | quarta a domingo, 8h–13h | confirmado por Italo em atendimento real, mas conflita com a janela acima |
+| Portfólio de serviços | Professional Coaching, Summer Camp, Trackside Support (do sistema de reservas) | o portfólio comercial do Chase era 1-Day Arrive and Drive, Training Camp, Academy e Racing Team; decidir qual vale no funil |
+| Idade mínima | não implementado | o Chase recusava por código abaixo de 4 anos (Baby Kart 4–7, demais 7+) |
+| Taxas da pista e depósito | não implementado | driver pass e pit pass são pagos direto à pista e nunca entram no valor |
+| Política de cancelamento | não implementado | taxa fixa registrada no rate card do Chase, a reconfirmar |
+
+Enquanto esses pontos não forem confirmados, o robô não afirma nenhum deles ao
+lead: ele escala.
