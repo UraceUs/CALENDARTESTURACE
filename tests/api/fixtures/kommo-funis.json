@@ -1,0 +1,188 @@
+{
+ "_fonte": "Estrutura real de urace.kommo.com em 2026-09-25 (subconjunto), via Urace Command Center.",
+ "pipelines": [
+  {
+   "id": 9903543,
+   "name": "Urace",
+   "sort": 1,
+   "_embedded": {
+    "statuses": [
+     {
+      "id": 76050835,
+      "name": "Incoming leads",
+      "sort": 10,
+      "type": 1
+     },
+     {
+      "id": 105276412,
+      "name": "First Contact",
+      "sort": 10,
+      "type": 0
+     },
+     {
+      "id": 78564259,
+      "name": "Onboarding funnel",
+      "sort": 20,
+      "type": 0
+     },
+     {
+      "id": 90232403,
+      "name": "conversation in progress",
+      "sort": 30,
+      "type": 0
+     },
+     {
+      "id": 76052579,
+      "name": "Follow Up 1",
+      "sort": 40,
+      "type": 0
+     },
+     {
+      "id": 77188783,
+      "name": "Cold Leads",
+      "sort": 70,
+      "type": 0
+     },
+     {
+      "id": 78606031,
+      "name": "Hot Leads",
+      "sort": 80,
+      "type": 0
+     },
+     {
+      "id": 77518191,
+      "name": "Closing the sale",
+      "sort": 110,
+      "type": 0
+     },
+     {
+      "id": 76999131,
+      "name": "Suppliers",
+      "sort": 170,
+      "type": 0
+     },
+     {
+      "id": 142,
+      "name": "Closed - won",
+      "sort": 10000,
+      "type": 0
+     },
+     {
+      "id": 143,
+      "name": "Closed - lost",
+      "sort": 11000,
+      "type": 0
+     }
+    ]
+   }
+  },
+  {
+   "id": 9957459,
+   "name": "Contact list",
+   "sort": 3,
+   "_embedded": {
+    "statuses": [
+     {
+      "id": 76442719,
+      "name": "Incoming leads",
+      "sort": 10,
+      "type": 1
+     },
+     {
+      "id": 76442723,
+      "name": "Interactions",
+      "sort": 40,
+      "type": 0
+     },
+     {
+      "id": 142,
+      "name": "Closed - won",
+      "sort": 10000,
+      "type": 0
+     },
+     {
+      "id": 143,
+      "name": "Closed - lost",
+      "sort": 11000,
+      "type": 0
+     }
+    ]
+   }
+  },
+  {
+   "id": 14512484,
+   "name": "Comercial",
+   "sort": 7,
+   "_embedded": {
+    "statuses": [
+     {
+      "id": 112100840,
+      "name": "Incoming leads",
+      "sort": 10,
+      "type": 1
+     },
+     {
+      "id": 112100844,
+      "name": "ENTRADA ",
+      "sort": 20,
+      "type": 0
+     },
+     {
+      "id": 112100848,
+      "name": "QUALIFICADO ",
+      "sort": 30,
+      "type": 0
+     },
+     {
+      "id": 112100852,
+      "name": "ATENDIMENTO ",
+      "sort": 40,
+      "type": 0
+     },
+     {
+      "id": 112113588,
+      "name": "STAND BY",
+      "sort": 50,
+      "type": 0
+     },
+     {
+      "id": 112113592,
+      "name": "PROPOSTA ",
+      "sort": 60,
+      "type": 0
+     },
+     {
+      "id": 112113596,
+      "name": "FECHAMENTO ",
+      "sort": 70,
+      "type": 0
+     },
+     {
+      "id": 112113600,
+      "name": "FECHAMENTO ",
+      "sort": 80,
+      "type": 0
+     },
+     {
+      "id": 112113604,
+      "name": "PERDIDO / NÃO QUALIFICADO",
+      "sort": 90,
+      "type": 0
+     },
+     {
+      "id": 142,
+      "name": "Closed - won",
+      "sort": 10000,
+      "type": 0
+     },
+     {
+      "id": 143,
+      "name": "Closed - lost",
+      "sort": 11000,
+      "type": 0
+     }
+    ]
+   }
+  }
+ ]
+}

@@ -584,3 +584,21 @@ describe('Dois funis — Entrada recebe tudo, Comercial so lead', () => {
     expect(media.interromper).toBe(false);
   });
 });
+
+describe('Mensagens automaticas vistas no Kommo da U-RACE', () => {
+  it.each([
+    ['Your code is 711995', 'info@account-d.docusign.net'],
+    ['713157 is your code to log in to Kommo', 'mfa@kommo.com'],
+    ['[Seguranca] Sua senha de acesso foi alterada', 'changed@rdstation-security.com'],
+    ['Zoho Vault - O periodo de avaliacao expirou', 'notification@zohostore.com'],
+    ['New deals for you', 'news@notice.alibaba.com']
+  ])('"%s" (%s) fica em Automaticos', (texto, email) => {
+    const { kommo } = avaliar({ canal: 'email', texto, contato: { email } });
+    expect(kommo.motivo).toBe('MENSAGEM_AUTOMATICA');
+  });
+
+  it('e-mail de pessoa real nao e tratado como automatico', () => {
+    const { analise } = avaliar({ canal: 'email', texto: 'Hi, how much is a training day?', contato: { email: 'carloscrestana@gmail.com' } });
+    expect(analise.flags.automatico).toBe(false);
+  });
+});

@@ -66,6 +66,37 @@ Comercial**, e ele só tem lead.
 6. O Salesbot precisa enviar `card.pipeline` (`Entrada` ou `Comercial`). Sem
    isso, o motor trata o card como Comercial (lado seguro: não duplica).
 
+**No Kommo da U-RACE, nada é criado: as regras usam os funis que já existem**
+(`KOMMO_MAPA` em `lib/sdr/regras.js`). A Entrada é o funil principal **Urace**
+e o Comercial é o funil **Comercial** montado pela equipe.
+
+| Destino do motor | Funil / etapa no Kommo |
+|---|---|
+| Entrada · Triagem | Urace · First Contact |
+| Entrada · Aguardando contexto | Urace · conversation in progress |
+| Entrada · Sem sinal comercial | Urace · Cold Leads |
+| Entrada · Automáticos | Urace · Cold Leads + tag `nao_e_lead` |
+| Entrada · Ruído | Urace · Suppliers + tag `nao_e_lead` |
+| Entrada · Não contatar | Urace · perdido (143) + tag `opt_out` |
+| Comercial · Novo lead / Em qualificação | Comercial · ENTRADA |
+| Comercial · Qualificado - humano | Comercial · ATENDIMENTO |
+| Comercial · Reserva Etapa 1 (Pit ID) | Comercial · PROPOSTA |
+| Comercial · Briefing Etapa 2 | Comercial · FECHAMENTO |
+| Comercial · Reserva confirmada | Comercial · ganho (142) |
+| Comercial · Perdido | Comercial · PERDIDO / NÃO QUALIFICADO |
+
+QUALIFICADO e STAND BY ficam só para a equipe (o robô não coloca card lá).
+As tags `nao_e_lead` e `opt_out` seguem a convenção que a equipe já usa.
+
+**O que o executor não toca:** etapas do fluxo antigo no funil Urace (Hot Leads,
+Closing the sale, Follow Up, etc.), cards em *Incoming leads* ainda não aceitos e
+qualquer card dos outros funis (Contact list, Emails, Pós Venda, Operacional
+Vendas, Chase). Card perdido no Urace só volta se for para descer ao Comercial.
+
+**Pendência na conta:** o funil Comercial tem duas etapas chamadas
+`FECHAMENTO` (ordens 70 e 80). O executor usa a primeira; renomear ou apagar a
+segunda.
+
 ---
 
 ## Parte 1 — Regras de entrada no Kommo
@@ -463,19 +494,24 @@ montada à mão no Salesbot. O Salesbot fica só com as **respostas** ao lead
 
 | Rota | Faz |
 |---|---|
-| `POST /api/kommo/estrutura` | Confere e cria os funis Entrada e Comercial com as etapas; opcionalmente registra o webhook. Exige `Authorization: Bearer <SDR_WEBHOOK_TOKEN>`. |
+| `POST /api/kommo/estrutura` | Confere o `KOMMO_MAPA` contra os funis da conta (etapas faltando ou repetidas); cria um funil só se ele não existir; opcionalmente registra o webhook. Exige `Authorization: Bearer <SDR_WEBHOOK_TOKEN>`. |
 | `POST /api/kommo/webhook?token=<KOMMO_WEBHOOK_TOKEN>` | Recebe "mensagem recebida" do Kommo, avalia e aplica: move a etapa (desce da Entrada para o Comercial), tags, nota e, no handoff, tarefa para o responsável. Responde na hora e processa em segundo plano. |
 
 Por mensagem do lead, o executor lê o card, avalia com as mesmas regras e:
 
-- move para `kommo.destino` (etapa encontrada pelo **nome**; "Reserva
-  confirmada" e "Perdido" usam os fechamentos nativos do Kommo, ganho/perdido);
+- move para `kommo.destino`, traduzido pelo `KOMMO_MAPA` para a etapa real
+  (Parte 0);
 - adiciona tags sem apagar as existentes (`tags_to_add`);
 - escreve nota **só** quando o card entra no Comercial ou vai para humano;
 - no handoff cria tarefa com o prazo do SLA para `KOMMO_RESPONSAVEL_ID` e aplica
   `sdr:bot-silenciado` (o robô para de responder naquele card);
 - ignora mensagem enviada pela equipe, mensagem repetida e lead de funil que não
   seja Entrada/Comercial (funis antigos ficam intactos).
+
+**Modo observação (padrão):** sem `KOMMO_MODO=aplicar`, o executor recebe as
+mensagens, decide e **só registra no log** o que faria (`Kommo SDR: {"modo":"observar",...}`),
+sem escrever nada no Kommo. Rodar assim alguns dias com leads reais, conferir as
+decisões e só então mudar para `aplicar`.
 
 **Passo a passo para ligar:**
 
@@ -486,27 +522,30 @@ Por mensagem do lead, o executor lê o card, avalia com as mesmas regras e:
    - `KOMMO_TOKEN` — o token do passo 1;
    - `KOMMO_WEBHOOK_TOKEN` — segredo aleatório que vai na URL do webhook;
    - `SDR_WEBHOOK_TOKEN` — segredo administrativo (também protege `/api/sdr/avaliar`);
-   - `KOMMO_RESPONSAVEL_ID` — id do usuário do Kommo que recebe os handoffs.
+   - `KOMMO_RESPONSAVEL_ID` — id do usuário do Kommo que recebe os handoffs;
+   - `KOMMO_MODO` — deixar vazio (observar) na primeira fase; `aplicar` depois.
 3. Fazer o merge deste PR (deploy do backend).
-4. Conferir o que falta, sem alterar nada:
+4. Conferir o mapa contra a conta, sem alterar nada (na conta atual deve vir
+   `ok: true` e só a pendência do `FECHAMENTO` duplicado):
    ```bash
    curl -X POST https://<backend>/api/kommo/estrutura \
      -H "Authorization: Bearer $SDR_WEBHOOK_TOKEN" -H "Content-Type: application/json" -d '{}'
    ```
-5. Criar funis/etapas e registrar o webhook:
+5. Registrar o webhook (funil só é criado se não existir; etapa nunca é
+   acrescentada em funil existente):
    ```bash
    curl -X POST https://<backend>/api/kommo/estrutura \
      -H "Authorization: Bearer $SDR_WEBHOOK_TOKEN" -H "Content-Type: application/json" \
      -d '{"aplicar": true, "webhookUrl": "https://<backend>/api/kommo/webhook?token=<KOMMO_WEBHOOK_TOKEN>"}'
    ```
    Alternativa local: `KOMMO_SUBDOMINIO=... KOMMO_TOKEN=... node scripts/kommo-setup.js --aplicar --webhook "<url>"`.
-6. No Kommo, apontar **cada canal** (WhatsApp, Instagram, Messenger, Telegram,
-   chat do site, e-mail) para o funil **Entrada**. Em *Integrações → Web hooks*,
+6. No Kommo, conferir que **cada canal** (WhatsApp, Instagram, Messenger,
+   Telegram, chat do site, e-mail) cai no funil **Urace**. Em *Integrações → Web hooks*,
    conferir que o webhook aparece com o evento de **mensagem recebida**; se o
    registro pela API não tiver pegado, cadastrar manualmente a mesma URL.
-7. Teste de fumaça: de um número de teste, mandar "oi" (card fica em Entrada /
-   Aguardando contexto) e depois "quanto custa?" (card desce para Comercial /
-   Em qualificação, com nota `promover_card`). Os logs do Render mostram uma
+7. Teste de fumaça: de um número de teste, mandar "oi" (Urace ·
+   conversation in progress) e depois "quanto custa?" (desce para Comercial ·
+   ENTRADA, com nota `promover_card`). Em modo observação, conferir no log. Os logs do Render mostram uma
    linha `Kommo SDR:` por mensagem.
 
 ---
@@ -556,14 +595,14 @@ Não é o funil final; é o mínimo que para de jogar lead cru no pipeline.
 
 | Dia | Entrega | Quem | Pronto quando |
 |---|---|---|---|
-| 1 | Apontar todos os canais para o funil **Entrada** (os funis e etapas são criados pelo executor, seção 3.6) | Empresa (Kommo) | mensagem de teste de cada canal aparece na Triagem |
+| 1 | Validar o mapa de etapas (Parte 0) com a empresa e resolver o `FECHAMENTO` duplicado | Nós + empresa | mapa aprovado |
 | 1 | Validar este documento: horário de atendimento, portfólio do funil (Parte 4) | Nós | pendências da Parte 4 respondidas |
-| 2 | Ligar o executor (seção 3.6): token, variáveis no Render, `/api/kommo/estrutura` e webhook | Nós | card de teste desce sozinho ao perguntar preço |
+| 2 | Ligar o executor em **modo observação** (seção 3.6): token, variáveis no Render, webhook | Nós | log mostra a decisão de cada mensagem real |
 | 2 | Salesbot com passo `Webhook` → `/api/sdr/avaliar` só para as respostas do robô | Empresa + nós | robô responde "oi" com a pergunta de classificação |
-| 2 | Regra de e-mail: remetentes automáticos vão para Automáticos | Empresa | e-mail com código não aparece no Comercial |
 | 3 | Respostas do robô: saudação, preço (classificação antes do valor), agenda com **link do calendário** | Nós | lead recebe o link e a pergunta seguinte |
 | 3 | Handoff: tarefa + nota de resumo + notificação para o responsável único | Empresa | teste "quero falar com alguém" gera tarefa em ≤ 5 min |
 | 4 | Site → Kommo: eventos `reserva_etapa1` / `reserva_etapa2` com Pit ID | Nós | reserva de teste aparece na etapa certa |
+| 4 | Revisar 2 dias de log do modo observação e virar para `KOMMO_MODO=aplicar` | Nós | decisões conferidas; card de teste desce sozinho |
 | 5 | Follow-up (2 h, 1 dia, 3 dias, 7 dias) e fechamento como Perdido sem resposta | Empresa | lead de teste sem resposta recebe o 1º follow-up |
 | 6–7 | Rodar com leads reais; revisar a Entrada uma vez por dia procurando lead que ficou para trás e ajustar palavras-chave | Nós | nenhum lead real parado na Entrada |
 

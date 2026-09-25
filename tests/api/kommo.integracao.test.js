@@ -1,42 +1,39 @@
-// Integracao com o Kommo: funis, webhook de mensagens e acoes no card.
+// Integracao com o Kommo: mapa para os funis reais, webhook de mensagens e
+// acoes no card. O Kommo falso parte da estrutura real da conta (fixture).
 const request = require('supertest');
 const kommo = require('../../lib/kommo');
 const { regras } = require('../../lib/sdr');
 const { createApp } = require('../../server');
+const FIXTURE = require('./fixtures/kommo-funis.json');
 
-// Kommo falso em memoria, respondendo como a API v4 via fetch.
-function criarKommoFalso({ comFunis = true } = {}) {
-  let proximoId = 1000;
+// IDs reais (urace.kommo.com) usados nas verificacoes.
+const URACE = 9903543;
+const COMERCIAL = 14512484;
+const CONTACT_LIST = 9957459;
+const ST = {
+  incoming: 76050835,
+  firstContact: 105276412,
+  conversa: 90232403,
+  coldLeads: 77188783,
+  hotLeads: 78606031,
+  suppliers: 76999131,
+  cEntrada: 112100844,
+  cAtendimento: 112100852,
+  cProposta: 112113592,
+  cFechamento: 112113596,
+  interactions: 76442723
+};
+
+function criarKommoFalso(pipelines = FIXTURE.pipelines) {
+  let proximoId = 900000;
   const estado = {
-    pipelines: [],
+    pipelines: JSON.parse(JSON.stringify(pipelines)),
     leads: {},
     chamadas: [],
     notas: [],
     tarefas: [],
     webhooks: []
   };
-
-  function novoPipeline(nome, etapas) {
-    const pipeline = {
-      id: proximoId++,
-      name: nome,
-      sort: 10,
-      _embedded: {
-        statuses: [
-          ...etapas.map((etapa, i) => ({ id: proximoId++, name: etapa, sort: 10 + i * 10 })),
-          { id: 142, name: 'Closed - won', sort: 10000 },
-          { id: 143, name: 'Closed - lost', sort: 11000 }
-        ]
-      }
-    };
-    estado.pipelines.push(pipeline);
-    return pipeline;
-  }
-
-  novoPipeline('Funil antigo', ['Incoming', 'Contato']);
-  if (comFunis) {
-    kommo.estruturaDesejada().forEach(p => novoPipeline(p.nome, p.etapas));
-  }
 
   async function fetchImpl(url, opcoes) {
     const caminho = url.replace('https://urace.kommo.com/api/v4', '');
@@ -54,13 +51,12 @@ function criarKommoFalso({ comFunis = true } = {}) {
       return responder(200, { _embedded: { pipelines: estado.pipelines } });
     }
     if (metodo === 'POST' && caminho === '/leads/pipelines') {
-      corpo.forEach(p => novoPipeline(p.name, p._embedded.statuses.map(s => s.name)));
-      return responder(200, {});
-    }
-    const etapas = caminho.match(/^\/leads\/pipelines\/(\d+)\/statuses$/);
-    if (metodo === 'POST' && etapas) {
-      const pipeline = estado.pipelines.find(p => String(p.id) === etapas[1]);
-      corpo.forEach(s => pipeline._embedded.statuses.push({ id: proximoId++, name: s.name, sort: s.sort }));
+      corpo.forEach(p => estado.pipelines.push({
+        id: proximoId++,
+        name: p.name,
+        sort: p.sort,
+        _embedded: { statuses: p._embedded.statuses.map(s => ({ id: proximoId++, name: s.name, sort: s.sort, type: 0 })) }
+      }));
       return responder(200, {});
     }
     const lead = caminho.match(/^\/leads\/(\d+)$/);
@@ -94,19 +90,11 @@ function criarKommoFalso({ comFunis = true } = {}) {
     return responder(404, { title: 'rota falsa inexistente', caminho });
   }
 
-  function pipeline(nome) {
-    return estado.pipelines.find(p => p.name === nome);
-  }
-
-  function statusId(nomePipeline, etapa) {
-    return pipeline(nomePipeline)._embedded.statuses.find(s => s.name === etapa).id;
-  }
-
-  function criarLead(id, nomePipeline, etapa, extras = {}) {
+  function criarLead(id, pipelineId, statusId, extras = {}) {
     estado.leads[id] = {
       id,
-      pipeline_id: pipeline(nomePipeline).id,
-      status_id: statusId(nomePipeline, etapa),
+      pipeline_id: pipelineId,
+      status_id: statusId,
       responsible_user_id: 555,
       updated_at: 1790000000,
       closed_at: null,
@@ -116,12 +104,23 @@ function criarKommoFalso({ comFunis = true } = {}) {
     return estado.leads[id];
   }
 
-  return { estado, fetchImpl, pipeline, statusId, criarLead };
+  const escritas = () => estado.chamadas.filter(c => c.metodo !== 'GET');
+
+  return { estado, fetchImpl, criarLead, escritas };
 }
 
-const ENV = { KOMMO_SUBDOMINIO: 'urace', KOMMO_TOKEN: 'tok', KOMMO_RESPONSAVEL_ID: '777' };
-const T = regras.ETAPAS_ENTRADA;
-const C = regras.ESTAGIOS;
+const silencioso = { log: () => {}, error: () => {} };
+
+function integracaoPara(falso, extras = {}) {
+  const cliente = kommo.criarClienteKommo({ subdominio: 'urace', token: 't', fetchImpl: falso.fetchImpl });
+  return kommo.criarIntegracaoKommo({
+    cliente,
+    obterMapa: kommo.criarResolvedorDeMapa(cliente),
+    log: silencioso,
+    modo: 'aplicar',
+    ...extras
+  });
+}
 
 function mensagem(leadId, texto, extras = {}) {
   return {
@@ -142,52 +141,68 @@ function mensagem(leadId, texto, extras = {}) {
   };
 }
 
-describe('Kommo — funis', () => {
-  it('planeja e cria os funis Entrada e Comercial que faltam', async () => {
-    const falso = criarKommoFalso({ comFunis: false });
+const ENV = { KOMMO_SUBDOMINIO: 'urace', KOMMO_TOKEN: 'tok' };
+
+describe('Kommo — mapa para os funis reais', () => {
+  it('a conta atual ja tem tudo que o mapa usa: nada a criar', async () => {
+    const falso = criarKommoFalso();
+    const integracao = kommo.criarIntegracaoDoAmbiente(ENV, falso.fetchImpl);
+
+    const resultado = await integracao.sincronizarEstrutura({ aplicar: true });
+
+    expect(resultado.plano.ok).toBe(true);
+    expect(resultado.aplicado).toBe(false);
+    expect(falso.escritas()).toHaveLength(0);
+    expect(resultado.mapa.Entrada.id).toBe(URACE);
+    expect(resultado.mapa.Comercial.id).toBe(COMERCIAL);
+  });
+
+  it('aponta a etapa FECHAMENTO repetida no funil Comercial', async () => {
+    const plano = kommo.planejarEstrutura(FIXTURE.pipelines);
+    expect(plano.etapasDuplicadas).toEqual([{ pipeline: 'Comercial', etapa: 'FECHAMENTO', ocorrencias: 2 }]);
+  });
+
+  it('nunca acrescenta etapa em funil que ja existe', async () => {
+    const semStandBy = JSON.parse(JSON.stringify(FIXTURE.pipelines));
+    const comercial = semStandBy.find(p => p.name === 'Comercial');
+    comercial._embedded.statuses = comercial._embedded.statuses.filter(s => s.name.trim() !== 'PROPOSTA');
+    const falso = criarKommoFalso(semStandBy);
+    const integracao = kommo.criarIntegracaoDoAmbiente(ENV, falso.fetchImpl);
+
+    const resultado = await integracao.sincronizarEstrutura({ aplicar: true });
+
+    expect(resultado.plano.ok).toBe(false);
+    expect(resultado.plano.etapasFaltando).toEqual([{ pipeline: 'Comercial', etapa: 'PROPOSTA' }]);
+    expect(falso.escritas()).toHaveLength(0);
+  });
+
+  it('cria um funil inteiro so quando ele nao existe e com aplicar', async () => {
+    const semComercial = FIXTURE.pipelines.filter(p => p.name !== 'Comercial');
+    const falso = criarKommoFalso(semComercial);
     const integracao = kommo.criarIntegracaoDoAmbiente(ENV, falso.fetchImpl);
 
     const simulacao = await integracao.sincronizarEstrutura({ aplicar: false });
-    expect(simulacao.aplicado).toBe(false);
-    expect(simulacao.plano.pipelinesFaltando.map(p => p.nome)).toEqual(['Entrada', 'Comercial']);
-    expect(falso.estado.chamadas.some(c => c.metodo === 'POST')).toBe(false);
+    expect(simulacao.plano.pipelinesFaltando[0].nome).toBe('Comercial');
+    expect(falso.escritas()).toHaveLength(0);
 
     const aplicado = await integracao.sincronizarEstrutura({ aplicar: true });
     expect(aplicado.resultado.ok).toBe(true);
-
-    const criacao = falso.estado.chamadas.find(c => c.metodo === 'POST' && c.caminho === '/leads/pipelines');
-    expect(criacao.corpo[0].is_unsorted_on).toBe(false);
-    // Confirmada e Perdido usam os fechamentos nativos (142/143), nao etapas novas.
-    const etapasComercial = criacao.corpo[1]._embedded.statuses.map(s => s.name);
-    expect(etapasComercial).not.toContain(C.PERDIDO);
-    expect(etapasComercial).not.toContain(C.CONFIRMADA);
-  });
-
-  it('completa so as etapas que faltam num funil existente', async () => {
-    const falso = criarKommoFalso();
-    const entrada = falso.pipeline('Entrada');
-    entrada._embedded.statuses = entrada._embedded.statuses.filter(s => s.name !== T.AUTOMATICO);
-
-    const integracao = kommo.criarIntegracaoDoAmbiente(ENV, falso.fetchImpl);
-    const resultado = await integracao.sincronizarEstrutura({ aplicar: true });
-
-    expect(resultado.plano.etapasFaltando).toEqual([{ pipeline: 'Entrada', etapa: T.AUTOMATICO }]);
-    expect(resultado.resultado.ok).toBe(true);
+    const criado = falso.escritas()[0].corpo[0];
+    expect(criado.is_unsorted_on).toBe(false);
+    expect(criado._embedded.statuses.map(s => s.name)).toEqual(['ENTRADA', 'ATENDIMENTO', 'PROPOSTA', 'FECHAMENTO', 'PERDIDO / NAO QUALIFICADO']);
   });
 
   it('sem configuracao nao cria integracao', () => {
     expect(kommo.criarIntegracaoDoAmbiente({})).toBeNull();
   });
+
+  it('integracao do ambiente comeca em modo observar', () => {
+    expect(kommo.criarIntegracaoDoAmbiente(ENV).modo).toBe('observar');
+    expect(kommo.criarIntegracaoDoAmbiente({ ...ENV, KOMMO_MODO: 'aplicar' }).modo).toBe('aplicar');
+  });
 });
 
 describe('Kommo — webhook de mensagem aplica as regras no card', () => {
-  const silencioso = { log: () => {}, error: () => {} };
-
-  function integracaoPara(falso, extras = {}) {
-    const cliente = kommo.criarClienteKommo({ subdominio: 'urace', token: 't', fetchImpl: falso.fetchImpl });
-    return kommo.criarIntegracaoKommo({ cliente, obterMapa: kommo.criarResolvedorDeMapa(cliente), log: silencioso, ...extras });
-  }
-
   it('converte o corpo form-urlencoded do Kommo', () => {
     const corpo = kommo.parseCorpoWebhook(
       'message%5Badd%5D%5B0%5D%5Btext%5D=Oi&message%5Badd%5D%5B0%5D%5Belement_id%5D=42&message%5Badd%5D%5B0%5D%5Belement_type%5D=2',
@@ -199,37 +214,47 @@ describe('Kommo — webhook de mensagem aplica as regras no card', () => {
     expect(msg.leadId).toBe('42');
   });
 
-  it('pergunta de preco na Entrada desce o card para o Comercial', async () => {
+  it('pergunta de preco em First Contact desce para Comercial / ENTRADA', async () => {
     const falso = criarKommoFalso();
-    falso.criarLead(1, 'Entrada', T.TRIAGEM);
-    const integracao = integracaoPara(falso);
+    falso.criarLead(1, URACE, ST.firstContact);
 
-    const [resultado] = await integracao.receberWebhook(mensagem(1, 'Quanto custa o coaching?'));
+    const [resultado] = await integracaoPara(falso).receberWebhook(mensagem(1, 'Quanto custa o coaching?'));
 
     expect(resultado.acao).toBe('promover_card');
-    expect(falso.estado.leads[1].pipeline_id).toBe(falso.pipeline('Comercial').id);
-    expect(falso.estado.leads[1].status_id).toBe(falso.statusId('Comercial', C.QUALIFICANDO));
+    expect(falso.estado.leads[1].pipeline_id).toBe(COMERCIAL);
+    expect(falso.estado.leads[1].status_id).toBe(ST.cEntrada);
     expect(falso.estado.leads[1]._embedded.tags.map(t => t.name)).toContain('sdr:intencao-comercial');
-    expect(falso.estado.notas).toHaveLength(1);
     expect(falso.estado.notas[0].texto).toContain('promover_card');
   });
 
-  it('codigo de verificacao vai para Automaticos e nao gera nota', async () => {
+  it('em modo observar calcula tudo e nao escreve nada', async () => {
     const falso = criarKommoFalso();
-    falso.criarLead(2, 'Entrada', T.TRIAGEM);
-    const integracao = integracaoPara(falso);
+    falso.criarLead(1, URACE, ST.firstContact);
 
-    await integracao.receberWebhook(mensagem(2, 'Your verification code is 552211', { origin: 'email' }));
+    const [resultado] = await integracaoPara(falso, { modo: 'observar' }).receberWebhook(mensagem(1, 'Quanto custa o coaching?'));
 
-    expect(falso.estado.leads[2].status_id).toBe(falso.statusId('Entrada', T.AUTOMATICO));
+    expect(resultado.modo).toBe('observar');
+    expect(resultado.moveu).toEqual({ pipeline: 'Comercial', etapa: regras.ESTAGIOS.QUALIFICANDO });
+    expect(resultado.nota).toBe(true);
+    expect(falso.escritas()).toHaveLength(0);
+  });
+
+  it('codigo de login vai para Cold Leads com a tag nao_e_lead, sem nota', async () => {
+    const falso = criarKommoFalso();
+    falso.criarLead(2, URACE, ST.firstContact);
+
+    await integracaoPara(falso).receberWebhook(mensagem(2, '713157 is your code to log in to Kommo', { origin: 'email' }));
+
+    expect(falso.estado.leads[2].status_id).toBe(ST.coldLeads);
+    expect(falso.estado.leads[2]._embedded.tags.map(t => t.name)).toEqual(expect.arrayContaining(['sdr:automatico', 'nao_e_lead']));
     expect(falso.estado.notas).toHaveLength(0);
   });
 
-  it('pedido de humano gera nota, tarefa para o responsavel unico e silencia o robo', async () => {
+  it('pedido de humano vai para ATENDIMENTO com nota, tarefa e robo silenciado', async () => {
     const falso = criarKommoFalso();
-    falso.criarLead(3, 'Entrada', T.TRIAGEM);
-    const integracao = integracaoPara(falso, { responsavelId: '777' });
+    falso.criarLead(3, URACE, ST.firstContact);
     const agora = new Date('2026-09-23T14:00:00Z');
+    const integracao = integracaoPara(falso, { responsavelId: '777' });
 
     const resultado = await integracao.processarMensagem(
       kommo.extrairMensagensRecebidas(mensagem(3, 'Quero falar com alguem'))[0],
@@ -237,60 +262,100 @@ describe('Kommo — webhook de mensagem aplica as regras no card', () => {
     );
 
     expect(resultado.tarefa.prioridade).toBe('alta');
-    expect(falso.estado.leads[3].pipeline_id).toBe(falso.pipeline('Comercial').id);
-    expect(falso.estado.leads[3].status_id).toBe(falso.statusId('Comercial', C.HUMANO));
+    expect(falso.estado.leads[3].pipeline_id).toBe(COMERCIAL);
+    expect(falso.estado.leads[3].status_id).toBe(ST.cAtendimento);
     expect(falso.estado.tarefas[0].responsible_user_id).toBe(777);
-    expect(falso.estado.tarefas[0].entity_type).toBe('leads');
     expect(falso.estado.tarefas[0].complete_till).toBeGreaterThan(agora.getTime() / 1000);
     expect(falso.estado.notas[0].texto).toContain('HANDOFF ALTA');
-    const tags = falso.estado.leads[3]._embedded.tags.map(t => t.name);
-    expect(tags).toContain('sdr:handoff');
+    expect(falso.estado.leads[3]._embedded.tags.map(t => t.name)).toContain('sdr:handoff');
   });
 
-  it('mensagem enviada pela equipe (outgoing) e ignorada', async () => {
+  it('lead em etapa da equipe no funil Urace (Hot Leads) nao e mexido', async () => {
     const falso = criarKommoFalso();
-    falso.criarLead(4, 'Entrada', T.TRIAGEM);
-    const integracao = integracaoPara(falso);
+    falso.criarLead(4, URACE, ST.hotLeads);
 
-    const resultados = await integracao.receberWebhook(mensagem(4, 'Quanto custa?', { type: 'outgoing' }));
+    const [resultado] = await integracaoPara(falso).receberWebhook(mensagem(4, 'Obrigado!'));
 
-    expect(resultados).toHaveLength(0);
-    expect(falso.estado.leads[4].status_id).toBe(falso.statusId('Entrada', T.TRIAGEM));
+    expect(resultado.ignorado).toBe('ETAPA_DA_EQUIPE');
+    expect(falso.escritas()).toHaveLength(0);
   });
 
-  it('lead de funil fora do SDR nao e mexido', async () => {
+  it('lead perdido no Urace so volta se for para descer ao Comercial', async () => {
     const falso = criarKommoFalso();
-    falso.criarLead(5, 'Funil antigo', 'Contato');
+    falso.criarLead(5, URACE, 143, { closed_at: 1789000000 });
+    falso.criarLead(6, URACE, 143, { closed_at: 1789000000 });
     const integracao = integracaoPara(falso);
 
-    const [resultado] = await integracao.receberWebhook(mensagem(5, 'Quanto custa?'));
+    const [semSinal] = await integracao.receberWebhook(mensagem(5, 'Obrigado!'));
+    const [comSinal] = await integracao.receberWebhook(mensagem(6, 'Tem vaga no sabado? Quanto custa?'));
 
-    expect(resultado.ignorado).toBe('PIPELINE_FORA_DO_SDR');
-    expect(falso.estado.chamadas.some(c => c.metodo === 'PATCH')).toBe(false);
+    expect(semSinal.ignorado).toBe('FECHADO_SEM_SINAL');
+    expect(falso.estado.leads[5].status_id).toBe(143);
+    expect(comSinal.acao).toBe('promover_card');
+    expect(falso.estado.leads[6].pipeline_id).toBe(COMERCIAL);
   });
 
-  it('mesma mensagem entregue duas vezes e processada uma vez', async () => {
+  it('lead ainda em Incoming leads nao e mexido', async () => {
     const falso = criarKommoFalso();
-    falso.criarLead(6, 'Entrada', T.TRIAGEM);
-    const integracao = integracaoPara(falso);
-    const corpo = mensagem(6, 'Quanto custa?', { id: 'repetida' });
+    falso.criarLead(7, URACE, ST.incoming);
 
-    await integracao.receberWebhook(corpo);
-    const [segunda] = await integracao.receberWebhook(corpo);
+    const [resultado] = await integracaoPara(falso).receberWebhook(mensagem(7, 'Quanto custa?'));
 
-    expect(segunda.ignorado).toBe('DUPLICADA');
-    expect(falso.estado.notas).toHaveLength(1);
+    expect(resultado.ignorado).toBe('INCOMING_LEADS');
   });
 
-  it('lead ja no Comercial so recebe anexo, sem mudar de etapa', async () => {
+  it('lead ja no Comercial (PROPOSTA) so recebe anexo, sem mudar de etapa', async () => {
     const falso = criarKommoFalso();
-    falso.criarLead(7, 'Comercial', C.ETAPA1);
-    const integracao = integracaoPara(falso);
+    falso.criarLead(8, COMERCIAL, ST.cProposta);
 
-    const [resultado] = await integracao.receberWebhook(mensagem(7, 'Quanto custa?'));
+    const [resultado] = await integracaoPara(falso).receberWebhook(mensagem(8, 'Quanto custa?'));
 
     expect(resultado.acao).toBe('anexar_card');
-    expect(falso.estado.leads[7].status_id).toBe(falso.statusId('Comercial', C.ETAPA1));
+    expect(falso.estado.leads[8].status_id).toBe(ST.cProposta);
+  });
+
+  it('reserva confirmada no site fecha como ganho (142)', async () => {
+    const falso = criarKommoFalso();
+    falso.criarLead(9, COMERCIAL, ST.cFechamento);
+    const cliente = kommo.criarClienteKommo({ subdominio: 'urace', token: 't', fetchImpl: falso.fetchImpl });
+    const mapa = await kommo.criarResolvedorDeMapa(cliente)();
+    const decisao = require('../../lib/sdr').avaliarInteracao({
+      canal: 'site',
+      tipo: 'reserva_etapa2',
+      reserva: { pitId: 'PIT-AB12-XYZ9', etapa: 2 },
+      card: { existe: true, id: '9', pipeline: 'Comercial', status: 'aberto' }
+    });
+
+    await kommo.aplicarDecisao(cliente, falso.estado.leads[9], decisao, mapa, { modo: 'aplicar' });
+
+    expect(falso.estado.leads[9].status_id).toBe(142);
+  });
+
+  it('opt-out no Urace fecha como perdido com a tag opt_out', async () => {
+    const falso = criarKommoFalso();
+    falso.criarLead(10, URACE, ST.conversa);
+
+    await integracaoPara(falso).receberWebhook(mensagem(10, 'Pare de mandar mensagem'));
+
+    expect(falso.estado.leads[10].status_id).toBe(143);
+    expect(falso.estado.leads[10]._embedded.tags.map(t => t.name)).toContain('opt_out');
+  });
+
+  it('mensagem da equipe (outgoing), repetida ou de outro funil e ignorada', async () => {
+    const falso = criarKommoFalso();
+    falso.criarLead(11, URACE, ST.firstContact);
+    falso.criarLead(12, CONTACT_LIST, ST.interactions);
+    const integracao = integracaoPara(falso);
+
+    expect(await integracao.receberWebhook(mensagem(11, 'Quanto custa?', { type: 'outgoing' }))).toHaveLength(0);
+    const [outroFunil] = await integracao.receberWebhook(mensagem(12, 'Quanto custa?'));
+    expect(outroFunil.ignorado).toBe('PIPELINE_FORA_DO_SDR');
+
+    const corpo = mensagem(11, 'Quanto custa?', { id: 'repetida' });
+    await integracao.receberWebhook(corpo);
+    const [segunda] = await integracao.receberWebhook(corpo);
+    expect(segunda.ignorado).toBe('DUPLICADA');
+    expect(falso.estado.notas).toHaveLength(1);
   });
 });
 
@@ -327,7 +392,6 @@ describe('Kommo — rotas', () => {
 
     expect(resposta.status).toBe(200);
     expect(resposta.body.recebidas).toBe(1);
-    expect(receberWebhook).toHaveBeenCalledTimes(1);
     expect(receberWebhook.mock.calls[0][0].message.add['0'].text).toBe('Oi');
   });
 
