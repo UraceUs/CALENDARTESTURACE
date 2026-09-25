@@ -66,36 +66,34 @@ Comercial**, e ele só tem lead.
 6. O Salesbot precisa enviar `card.pipeline` (`Entrada` ou `Comercial`). Sem
    isso, o motor trata o card como Comercial (lado seguro: não duplica).
 
-**No Kommo da U-RACE, nada é criado: as regras usam os funis que já existem**
-(`KOMMO_MAPA` em `lib/sdr/regras.js`). A Entrada é o funil principal **Urace**
-e o Comercial é o funil **Comercial** montado pela equipe.
+**No Kommo da U-RACE, tudo roda num funil próprio: "Novo funil".** O setup
+(seção 3.6) cria esse funil; os funis da equipe (Urace, Comercial, Contact list,
+Emails, Pós Venda, Operacional Vendas, Chase) **não são tocados**. Dentro do
+Novo funil, as etapas de triagem fazem o papel da Entrada e as de venda, do
+Comercial ("descer para o Comercial" = passar para a etapa de venda).
+Mapa em `KOMMO_MAPA` (`lib/sdr/regras.js`).
 
-| Destino do motor | Funil / etapa no Kommo |
-|---|---|
-| Entrada · Triagem | Urace · First Contact |
-| Entrada · Aguardando contexto | Urace · conversation in progress |
-| Entrada · Sem sinal comercial | Urace · Cold Leads |
-| Entrada · Automáticos | Urace · Cold Leads + tag `nao_e_lead` |
-| Entrada · Ruído | Urace · Suppliers + tag `nao_e_lead` |
-| Entrada · Não contatar | Urace · perdido (143) + tag `opt_out` |
-| Comercial · Novo lead / Em qualificação | Comercial · ENTRADA |
-| Comercial · Qualificado - humano | Comercial · ATENDIMENTO |
-| Comercial · Reserva Etapa 1 (Pit ID) | Comercial · PROPOSTA |
-| Comercial · Briefing Etapa 2 | Comercial · FECHAMENTO |
-| Comercial · Reserva confirmada | Comercial · ganho (142) |
-| Comercial · Perdido | Comercial · PERDIDO / NÃO QUALIFICADO |
+| Ordem | Etapa no Novo funil | Zona | O que cai |
+|---|---|---|---|
+| 1 | Triagem | Entrada | conversa nova (primeira etapa, sem *Incoming leads*) |
+| 2 | Aguardando contexto | Entrada | "oi", áudio/foto sem texto |
+| 3 | Lead novo | Comercial | formulário do site, chamada perdida |
+| 4 | Em qualificação (robô) | Comercial | preço, agenda, contratação, score ≥ 40 |
+| 5 | Atendimento humano | Comercial | handoff: pediu pessoa, conversão, corporativo, sensível |
+| 6 | Reserva Etapa 1 (Pit ID) | Comercial | reserva iniciada no site |
+| 7 | Briefing Etapa 2 | Comercial | (etapa para a equipe acompanhar o briefing) |
+| 8 | Sem sinal comercial | Entrada | "obrigado", pergunta operacional solta |
+| 9 | Automáticos (e-mails e códigos) | Entrada | e-mail de sistema, código de login + tag `nao_e_lead` |
+| 10 | Ruído (spam e fornecedores) | Entrada | spam, fornecedor, currículo + tag `nao_e_lead` |
+| — | Ganho (142) | Comercial | Driver Briefing concluído (reserva confirmada) |
+| — | Perdido (143) | ambas | perdido ou opt-out (+ tag `opt_out`) |
 
-QUALIFICADO e STAND BY ficam só para a equipe (o robô não coloca card lá).
-As tags `nao_e_lead` e `opt_out` seguem a convenção que a equipe já usa.
+**O que o executor não toca:** qualquer card fora do Novo funil, cards em
+*Incoming leads* e etapas que alguém crie à mão dentro do Novo funil.
 
-**O que o executor não toca:** etapas do fluxo antigo no funil Urace (Hot Leads,
-Closing the sale, Follow Up, etc.), cards em *Incoming leads* ainda não aceitos e
-qualquer card dos outros funis (Contact list, Emails, Pós Venda, Operacional
-Vendas, Chase). Card perdido no Urace só volta se for para descer ao Comercial.
-
-**Pendência na conta:** o funil Comercial tem duas etapas chamadas
-`FECHAMENTO` (ordens 70 e 80). O executor usa a primeira; renomear ou apagar a
-segunda.
+**Para os leads chegarem ao Novo funil** é preciso, no Kommo, apontar as fontes
+(WhatsApp, Instagram, Messenger, Telegram, chat do site, e-mail) para ele. Até
+isso ser feito, o executor não mexe em nada: todo lead continua nos funis atuais.
 
 ---
 
@@ -494,7 +492,7 @@ montada à mão no Salesbot. O Salesbot fica só com as **respostas** ao lead
 
 | Rota | Faz |
 |---|---|
-| `POST /api/kommo/estrutura` | Confere o `KOMMO_MAPA` contra os funis da conta (etapas faltando ou repetidas); cria um funil só se ele não existir; opcionalmente registra o webhook. Exige `Authorization: Bearer <SDR_WEBHOOK_TOKEN>`. |
+| `POST /api/kommo/estrutura` | Confere o `KOMMO_MAPA` contra a conta; com `aplicar`, cria o Novo funil se ele não existir; opcionalmente registra o webhook. Exige `Authorization: Bearer <SDR_WEBHOOK_TOKEN>`. |
 | `POST /api/kommo/webhook?token=<KOMMO_WEBHOOK_TOKEN>` | Recebe "mensagem recebida" do Kommo, avalia e aplica: move a etapa (desce da Entrada para o Comercial), tags, nota e, no handoff, tarefa para o responsável. Responde na hora e processa em segundo plano. |
 
 Por mensagem do lead, o executor lê o card, avalia com as mesmas regras e:
@@ -525,27 +523,29 @@ decisões e só então mudar para `aplicar`.
    - `KOMMO_RESPONSAVEL_ID` — id do usuário do Kommo que recebe os handoffs;
    - `KOMMO_MODO` — deixar vazio (observar) na primeira fase; `aplicar` depois.
 3. Fazer o merge deste PR (deploy do backend).
-4. Conferir o mapa contra a conta, sem alterar nada (na conta atual deve vir
-   `ok: true` e só a pendência do `FECHAMENTO` duplicado):
+4. Conferir o plano, sem alterar nada (na conta atual deve vir só
+   `pipelinesFaltando: [Novo funil]` com as 10 etapas):
    ```bash
    curl -X POST https://<backend>/api/kommo/estrutura \
      -H "Authorization: Bearer $SDR_WEBHOOK_TOKEN" -H "Content-Type: application/json" -d '{}'
    ```
-5. Registrar o webhook (funil só é criado se não existir; etapa nunca é
-   acrescentada em funil existente):
+5. Criar o **Novo funil** e registrar o webhook (funil só é criado se não
+   existir; etapa nunca é acrescentada em funil existente; rodar de novo não
+   duplica):
    ```bash
    curl -X POST https://<backend>/api/kommo/estrutura \
      -H "Authorization: Bearer $SDR_WEBHOOK_TOKEN" -H "Content-Type: application/json" \
      -d '{"aplicar": true, "webhookUrl": "https://<backend>/api/kommo/webhook?token=<KOMMO_WEBHOOK_TOKEN>"}'
    ```
    Alternativa local: `KOMMO_SUBDOMINIO=... KOMMO_TOKEN=... node scripts/kommo-setup.js --aplicar --webhook "<url>"`.
-6. No Kommo, conferir que **cada canal** (WhatsApp, Instagram, Messenger,
-   Telegram, chat do site, e-mail) cai no funil **Urace**. Em *Integrações → Web hooks*,
+6. No Kommo, apontar **cada canal** (WhatsApp, Instagram, Messenger, Telegram,
+   chat do site, e-mail) para o **Novo funil**. Dá para começar por um canal só
+   e ir migrando. Em *Integrações → Web hooks*,
    conferir que o webhook aparece com o evento de **mensagem recebida**; se o
    registro pela API não tiver pegado, cadastrar manualmente a mesma URL.
-7. Teste de fumaça: de um número de teste, mandar "oi" (Urace ·
-   conversation in progress) e depois "quanto custa?" (desce para Comercial ·
-   ENTRADA, com nota `promover_card`). Em modo observação, conferir no log. Os logs do Render mostram uma
+7. Teste de fumaça: de um número de teste, mandar "oi" (Novo funil ·
+   Aguardando contexto) e depois "quanto custa?" (Novo funil · Em qualificação
+   (robô), com nota `promover_card`). Em modo observação, conferir no log. Os logs do Render mostram uma
    linha `Kommo SDR:` por mensagem.
 
 ---
@@ -595,7 +595,7 @@ Não é o funil final; é o mínimo que para de jogar lead cru no pipeline.
 
 | Dia | Entrega | Quem | Pronto quando |
 |---|---|---|---|
-| 1 | Validar o mapa de etapas (Parte 0) com a empresa e resolver o `FECHAMENTO` duplicado | Nós + empresa | mapa aprovado |
+| 1 | Criar o **Novo funil** (seção 3.6) e apontar os canais para ele | Nós + empresa | mensagem de teste de cada canal cai em Triagem |
 | 1 | Validar este documento: horário de atendimento, portfólio do funil (Parte 4) | Nós | pendências da Parte 4 respondidas |
 | 2 | Ligar o executor em **modo observação** (seção 3.6): token, variáveis no Render, webhook | Nós | log mostra a decisão de cada mensagem real |
 | 2 | Salesbot com passo `Webhook` → `/api/sdr/avaliar` só para as respostas do robô | Empresa + nós | robô responde "oi" com a pergunta de classificação |

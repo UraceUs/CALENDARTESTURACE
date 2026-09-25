@@ -6,23 +6,10 @@ const { regras } = require('../../lib/sdr');
 const { createApp } = require('../../server');
 const FIXTURE = require('./fixtures/kommo-funis.json');
 
-// IDs reais (urace.kommo.com) usados nas verificacoes.
+// IDs reais (urace.kommo.com) dos funis da equipe, que o SDR nao toca.
 const URACE = 9903543;
-const COMERCIAL = 14512484;
-const CONTACT_LIST = 9957459;
-const ST = {
-  incoming: 76050835,
-  firstContact: 105276412,
-  conversa: 90232403,
-  coldLeads: 77188783,
-  hotLeads: 78606031,
-  suppliers: 76999131,
-  cEntrada: 112100844,
-  cAtendimento: 112100852,
-  cProposta: 112113592,
-  cFechamento: 112113596,
-  interactions: 76442723
-};
+const COMERCIAL_DA_EQUIPE = 14512484;
+const FIRST_CONTACT = 105276412;
 
 function criarKommoFalso(pipelines = FIXTURE.pipelines) {
   let proximoId = 900000;
@@ -142,67 +129,82 @@ function mensagem(leadId, texto, extras = {}) {
 }
 
 const ENV = { KOMMO_SUBDOMINIO: 'urace', KOMMO_TOKEN: 'tok' };
+const NOVO = regras.NOVO_FUNIL;
 
-describe('Kommo — mapa para os funis reais', () => {
-  it('a conta atual ja tem tudo que o mapa usa: nada a criar', async () => {
+// Conta real + "Novo funil" criado pelo setup. Devolve ids por nome de etapa.
+async function contaComNovoFunil() {
+  const falso = criarKommoFalso();
+  const integracao = kommo.criarIntegracaoDoAmbiente(ENV, falso.fetchImpl);
+  await integracao.sincronizarEstrutura({ aplicar: true });
+  falso.estado.chamadas.length = 0;
+
+  const funil = falso.estado.pipelines.find(p => p.name === NOVO);
+  const etapa = nome => funil._embedded.statuses.find(st => st.name === nome).id;
+  return { falso, funilId: funil.id, etapa };
+}
+
+describe('Kommo — Novo funil', () => {
+  it('na conta atual falta so o Novo funil, com as 10 etapas na ordem', () => {
+    const plano = kommo.planejarEstrutura(FIXTURE.pipelines);
+
+    expect(plano.etapasFaltando).toEqual([]);
+    expect(plano.pipelinesFaltando).toHaveLength(1);
+    expect(plano.pipelinesFaltando[0].nome).toBe('Novo funil');
+    expect(plano.pipelinesFaltando[0].etapas).toEqual(regras.KOMMO_MAPA.ordemEtapas);
+  });
+
+  it('sem aplicar nao escreve nada', async () => {
     const falso = criarKommoFalso();
     const integracao = kommo.criarIntegracaoDoAmbiente(ENV, falso.fetchImpl);
 
-    const resultado = await integracao.sincronizarEstrutura({ aplicar: true });
+    const resultado = await integracao.sincronizarEstrutura({ aplicar: false });
 
-    expect(resultado.plano.ok).toBe(true);
     expect(resultado.aplicado).toBe(false);
     expect(falso.escritas()).toHaveLength(0);
-    expect(resultado.mapa.Entrada.id).toBe(URACE);
-    expect(resultado.mapa.Comercial.id).toBe(COMERCIAL);
   });
 
-  it('aponta a etapa FECHAMENTO repetida no funil Comercial', async () => {
-    const plano = kommo.planejarEstrutura(FIXTURE.pipelines);
-    expect(plano.etapasDuplicadas).toEqual([{ pipeline: 'Comercial', etapa: 'FECHAMENTO', ocorrencias: 2 }]);
-  });
-
-  it('nunca acrescenta etapa em funil que ja existe', async () => {
-    const semStandBy = JSON.parse(JSON.stringify(FIXTURE.pipelines));
-    const comercial = semStandBy.find(p => p.name === 'Comercial');
-    comercial._embedded.statuses = comercial._embedded.statuses.filter(s => s.name.trim() !== 'PROPOSTA');
-    const falso = criarKommoFalso(semStandBy);
+  it('com aplicar cria so o Novo funil, sem tocar nos funis da equipe', async () => {
+    const falso = criarKommoFalso();
+    const antes = JSON.stringify(falso.estado.pipelines);
     const integracao = kommo.criarIntegracaoDoAmbiente(ENV, falso.fetchImpl);
 
     const resultado = await integracao.sincronizarEstrutura({ aplicar: true });
 
-    expect(resultado.plano.ok).toBe(false);
-    expect(resultado.plano.etapasFaltando).toEqual([{ pipeline: 'Comercial', etapa: 'PROPOSTA' }]);
-    expect(falso.escritas()).toHaveLength(0);
+    expect(resultado.resultado.ok).toBe(true);
+    expect(falso.escritas()).toHaveLength(1);
+    const criado = falso.escritas()[0].corpo;
+    expect(criado).toHaveLength(1);
+    expect(criado[0].name).toBe('Novo funil');
+    expect(criado[0].is_main).toBe(false);
+    expect(criado[0].is_unsorted_on).toBe(false);
+    expect(JSON.stringify(falso.estado.pipelines.slice(0, FIXTURE.pipelines.length))).toBe(antes);
+
+    // Rodar de novo nao cria outro.
+    const deNovo = await integracao.sincronizarEstrutura({ aplicar: true });
+    expect(deNovo.aplicado).toBe(false);
+    expect(falso.escritas()).toHaveLength(1);
   });
 
-  it('cria um funil inteiro so quando ele nao existe e com aplicar', async () => {
-    const semComercial = FIXTURE.pipelines.filter(p => p.name !== 'Comercial');
-    const falso = criarKommoFalso(semComercial);
+  it('nunca acrescenta etapa no Novo funil se alguem apagar uma', async () => {
+    const { falso } = await contaComNovoFunil();
+    const funil = falso.estado.pipelines.find(p => p.name === NOVO);
+    funil._embedded.statuses = funil._embedded.statuses.filter(st => st.name !== 'Briefing Etapa 2');
     const integracao = kommo.criarIntegracaoDoAmbiente(ENV, falso.fetchImpl);
 
-    const simulacao = await integracao.sincronizarEstrutura({ aplicar: false });
-    expect(simulacao.plano.pipelinesFaltando[0].nome).toBe('Comercial');
+    const resultado = await integracao.sincronizarEstrutura({ aplicar: true });
+
+    expect(resultado.plano.etapasFaltando).toEqual([{ pipeline: 'Novo funil', etapa: 'Briefing Etapa 2' }]);
     expect(falso.escritas()).toHaveLength(0);
-
-    const aplicado = await integracao.sincronizarEstrutura({ aplicar: true });
-    expect(aplicado.resultado.ok).toBe(true);
-    const criado = falso.escritas()[0].corpo[0];
-    expect(criado.is_unsorted_on).toBe(false);
-    expect(criado._embedded.statuses.map(s => s.name)).toEqual(['ENTRADA', 'ATENDIMENTO', 'PROPOSTA', 'FECHAMENTO', 'PERDIDO / NAO QUALIFICADO']);
   });
 
-  it('sem configuracao nao cria integracao', () => {
+  it('sem configuracao nao cria integracao; com configuracao comeca em observar', () => {
     expect(kommo.criarIntegracaoDoAmbiente({})).toBeNull();
-  });
-
-  it('integracao do ambiente comeca em modo observar', () => {
     expect(kommo.criarIntegracaoDoAmbiente(ENV).modo).toBe('observar');
     expect(kommo.criarIntegracaoDoAmbiente({ ...ENV, KOMMO_MODO: 'aplicar' }).modo).toBe('aplicar');
   });
 });
 
-describe('Kommo — webhook de mensagem aplica as regras no card', () => {
+describe('Kommo — webhook aplica as regras dentro do Novo funil', () => {
   it('converte o corpo form-urlencoded do Kommo', () => {
     const corpo = kommo.parseCorpoWebhook(
       'message%5Badd%5D%5B0%5D%5Btext%5D=Oi&message%5Badd%5D%5B0%5D%5Belement_id%5D=42&message%5Badd%5D%5B0%5D%5Belement_type%5D=2',
@@ -214,24 +216,35 @@ describe('Kommo — webhook de mensagem aplica as regras no card', () => {
     expect(msg.leadId).toBe('42');
   });
 
-  it('pergunta de preco em First Contact desce para Comercial / ENTRADA', async () => {
-    const falso = criarKommoFalso();
-    falso.criarLead(1, URACE, ST.firstContact);
+  it('"oi" em Triagem vai para Aguardando contexto', async () => {
+    const { falso, funilId, etapa } = await contaComNovoFunil();
+    falso.criarLead(1, funilId, etapa('Triagem'));
 
-    const [resultado] = await integracaoPara(falso).receberWebhook(mensagem(1, 'Quanto custa o coaching?'));
+    const [resultado] = await integracaoPara(falso).receberWebhook(mensagem(1, 'Oi'));
+
+    expect(resultado.acao).toBe('somente_conversa');
+    expect(falso.estado.leads[1].status_id).toBe(etapa('Aguardando contexto'));
+    expect(falso.estado.notas).toHaveLength(0);
+  });
+
+  it('pergunta de preco desce para Em qualificacao (robo) com nota', async () => {
+    const { falso, funilId, etapa } = await contaComNovoFunil();
+    falso.criarLead(2, funilId, etapa('Aguardando contexto'));
+
+    const [resultado] = await integracaoPara(falso).receberWebhook(mensagem(2, 'Quanto custa o coaching?'));
 
     expect(resultado.acao).toBe('promover_card');
-    expect(falso.estado.leads[1].pipeline_id).toBe(COMERCIAL);
-    expect(falso.estado.leads[1].status_id).toBe(ST.cEntrada);
-    expect(falso.estado.leads[1]._embedded.tags.map(t => t.name)).toContain('sdr:intencao-comercial');
+    expect(falso.estado.leads[2].pipeline_id).toBe(funilId);
+    expect(falso.estado.leads[2].status_id).toBe(etapa('Em qualificação (robô)'));
+    expect(falso.estado.leads[2]._embedded.tags.map(t => t.name)).toContain('sdr:intencao-comercial');
     expect(falso.estado.notas[0].texto).toContain('promover_card');
   });
 
   it('em modo observar calcula tudo e nao escreve nada', async () => {
-    const falso = criarKommoFalso();
-    falso.criarLead(1, URACE, ST.firstContact);
+    const { falso, funilId, etapa } = await contaComNovoFunil();
+    falso.criarLead(3, funilId, etapa('Triagem'));
 
-    const [resultado] = await integracaoPara(falso, { modo: 'observar' }).receberWebhook(mensagem(1, 'Quanto custa o coaching?'));
+    const [resultado] = await integracaoPara(falso, { modo: 'observar' }).receberWebhook(mensagem(3, 'Quanto custa o coaching?'));
 
     expect(resultado.modo).toBe('observar');
     expect(resultado.moveu).toEqual({ pipeline: 'Comercial', etapa: regras.ESTAGIOS.QUALIFICANDO });
@@ -239,119 +252,124 @@ describe('Kommo — webhook de mensagem aplica as regras no card', () => {
     expect(falso.escritas()).toHaveLength(0);
   });
 
-  it('codigo de login vai para Cold Leads com a tag nao_e_lead, sem nota', async () => {
-    const falso = criarKommoFalso();
-    falso.criarLead(2, URACE, ST.firstContact);
+  it('codigo de login vai para Automaticos com a tag nao_e_lead, sem nota', async () => {
+    const { falso, funilId, etapa } = await contaComNovoFunil();
+    falso.criarLead(4, funilId, etapa('Triagem'));
 
-    await integracaoPara(falso).receberWebhook(mensagem(2, '713157 is your code to log in to Kommo', { origin: 'email' }));
+    await integracaoPara(falso).receberWebhook(mensagem(4, '713157 is your code to log in to Kommo', { origin: 'email' }));
 
-    expect(falso.estado.leads[2].status_id).toBe(ST.coldLeads);
-    expect(falso.estado.leads[2]._embedded.tags.map(t => t.name)).toEqual(expect.arrayContaining(['sdr:automatico', 'nao_e_lead']));
+    expect(falso.estado.leads[4].status_id).toBe(etapa('Automáticos (e-mails e códigos)'));
+    expect(falso.estado.leads[4]._embedded.tags.map(t => t.name)).toEqual(expect.arrayContaining(['sdr:automatico', 'nao_e_lead']));
     expect(falso.estado.notas).toHaveLength(0);
   });
 
-  it('pedido de humano vai para ATENDIMENTO com nota, tarefa e robo silenciado', async () => {
-    const falso = criarKommoFalso();
-    falso.criarLead(3, URACE, ST.firstContact);
-    const agora = new Date('2026-09-23T14:00:00Z');
-    const integracao = integracaoPara(falso, { responsavelId: '777' });
+  it('spam de fornecedor vai para Ruido', async () => {
+    const { falso, funilId, etapa } = await contaComNovoFunil();
+    falso.criarLead(5, funilId, etapa('Triagem'));
 
-    const resultado = await integracao.processarMensagem(
-      kommo.extrairMensagensRecebidas(mensagem(3, 'Quero falar com alguem'))[0],
+    await integracaoPara(falso).receberWebhook(mensagem(5, 'Nossa empresa oferece trafego pago para voces'));
+
+    expect(falso.estado.leads[5].status_id).toBe(etapa('Ruído (spam e fornecedores)'));
+  });
+
+  it('pedido de humano vai para Atendimento humano com nota, tarefa e robo silenciado', async () => {
+    const { falso, funilId, etapa } = await contaComNovoFunil();
+    falso.criarLead(6, funilId, etapa('Triagem'));
+    const agora = new Date('2026-09-23T14:00:00Z');
+
+    const resultado = await integracaoPara(falso, { responsavelId: '777' }).processarMensagem(
+      kommo.extrairMensagensRecebidas(mensagem(6, 'Quero falar com alguem'))[0],
       agora
     );
 
     expect(resultado.tarefa.prioridade).toBe('alta');
-    expect(falso.estado.leads[3].pipeline_id).toBe(COMERCIAL);
-    expect(falso.estado.leads[3].status_id).toBe(ST.cAtendimento);
+    expect(falso.estado.leads[6].status_id).toBe(etapa('Atendimento humano'));
     expect(falso.estado.tarefas[0].responsible_user_id).toBe(777);
     expect(falso.estado.tarefas[0].complete_till).toBeGreaterThan(agora.getTime() / 1000);
     expect(falso.estado.notas[0].texto).toContain('HANDOFF ALTA');
-    expect(falso.estado.leads[3]._embedded.tags.map(t => t.name)).toContain('sdr:handoff');
+    expect(falso.estado.leads[6]._embedded.tags.map(t => t.name)).toContain('sdr:handoff');
   });
 
-  it('lead em etapa da equipe no funil Urace (Hot Leads) nao e mexido', async () => {
-    const falso = criarKommoFalso();
-    falso.criarLead(4, URACE, ST.hotLeads);
+  it('lead em etapa de venda so recebe anexo, sem voltar de etapa', async () => {
+    const { falso, funilId, etapa } = await contaComNovoFunil();
+    falso.criarLead(7, funilId, etapa('Reserva Etapa 1 (Pit ID)'));
 
-    const [resultado] = await integracaoPara(falso).receberWebhook(mensagem(4, 'Obrigado!'));
-
-    expect(resultado.ignorado).toBe('ETAPA_DA_EQUIPE');
-    expect(falso.escritas()).toHaveLength(0);
-  });
-
-  it('lead perdido no Urace so volta se for para descer ao Comercial', async () => {
-    const falso = criarKommoFalso();
-    falso.criarLead(5, URACE, 143, { closed_at: 1789000000 });
-    falso.criarLead(6, URACE, 143, { closed_at: 1789000000 });
-    const integracao = integracaoPara(falso);
-
-    const [semSinal] = await integracao.receberWebhook(mensagem(5, 'Obrigado!'));
-    const [comSinal] = await integracao.receberWebhook(mensagem(6, 'Tem vaga no sabado? Quanto custa?'));
-
-    expect(semSinal.ignorado).toBe('FECHADO_SEM_SINAL');
-    expect(falso.estado.leads[5].status_id).toBe(143);
-    expect(comSinal.acao).toBe('promover_card');
-    expect(falso.estado.leads[6].pipeline_id).toBe(COMERCIAL);
-  });
-
-  it('lead ainda em Incoming leads nao e mexido', async () => {
-    const falso = criarKommoFalso();
-    falso.criarLead(7, URACE, ST.incoming);
-
-    const [resultado] = await integracaoPara(falso).receberWebhook(mensagem(7, 'Quanto custa?'));
-
-    expect(resultado.ignorado).toBe('INCOMING_LEADS');
-  });
-
-  it('lead ja no Comercial (PROPOSTA) so recebe anexo, sem mudar de etapa', async () => {
-    const falso = criarKommoFalso();
-    falso.criarLead(8, COMERCIAL, ST.cProposta);
-
-    const [resultado] = await integracaoPara(falso).receberWebhook(mensagem(8, 'Quanto custa?'));
+    const [resultado] = await integracaoPara(falso).receberWebhook(mensagem(7, 'Obrigado!'));
 
     expect(resultado.acao).toBe('anexar_card');
-    expect(falso.estado.leads[8].status_id).toBe(ST.cProposta);
+    expect(falso.estado.leads[7].status_id).toBe(etapa('Reserva Etapa 1 (Pit ID)'));
   });
 
-  it('reserva confirmada no site fecha como ganho (142)', async () => {
-    const falso = criarKommoFalso();
-    falso.criarLead(9, COMERCIAL, ST.cFechamento);
+  it('Driver Briefing concluido fecha como ganho (142)', async () => {
+    const { falso, funilId, etapa } = await contaComNovoFunil();
+    falso.criarLead(8, funilId, etapa('Briefing Etapa 2'));
     const cliente = kommo.criarClienteKommo({ subdominio: 'urace', token: 't', fetchImpl: falso.fetchImpl });
     const mapa = await kommo.criarResolvedorDeMapa(cliente)();
     const decisao = require('../../lib/sdr').avaliarInteracao({
       canal: 'site',
       tipo: 'reserva_etapa2',
       reserva: { pitId: 'PIT-AB12-XYZ9', etapa: 2 },
-      card: { existe: true, id: '9', pipeline: 'Comercial', status: 'aberto' }
+      card: { existe: true, id: '8', pipeline: 'Comercial', status: 'aberto' }
     });
 
-    await kommo.aplicarDecisao(cliente, falso.estado.leads[9], decisao, mapa, { modo: 'aplicar' });
+    await kommo.aplicarDecisao(cliente, falso.estado.leads[8], decisao, mapa, { modo: 'aplicar' });
 
-    expect(falso.estado.leads[9].status_id).toBe(142);
+    expect(falso.estado.leads[8].status_id).toBe(142);
   });
 
-  it('opt-out no Urace fecha como perdido com a tag opt_out', async () => {
-    const falso = criarKommoFalso();
-    falso.criarLead(10, URACE, ST.conversa);
+  it('opt-out fecha como perdido com a tag opt_out', async () => {
+    const { falso, funilId, etapa } = await contaComNovoFunil();
+    falso.criarLead(9, funilId, etapa('Aguardando contexto'));
 
-    await integracaoPara(falso).receberWebhook(mensagem(10, 'Pare de mandar mensagem'));
+    await integracaoPara(falso).receberWebhook(mensagem(9, 'Pare de mandar mensagem'));
 
-    expect(falso.estado.leads[10].status_id).toBe(143);
-    expect(falso.estado.leads[10]._embedded.tags.map(t => t.name)).toContain('opt_out');
+    expect(falso.estado.leads[9].status_id).toBe(143);
+    expect(falso.estado.leads[9]._embedded.tags.map(t => t.name)).toContain('opt_out');
   });
 
-  it('mensagem da equipe (outgoing), repetida ou de outro funil e ignorada', async () => {
-    const falso = criarKommoFalso();
-    falso.criarLead(11, URACE, ST.firstContact);
-    falso.criarLead(12, CONTACT_LIST, ST.interactions);
+  it('lead perdido que volta pedindo agenda reabre em Em qualificacao', async () => {
+    const { falso, funilId, etapa } = await contaComNovoFunil();
+    falso.criarLead(10, funilId, 143, { closed_at: Math.floor(Date.now() / 1000) - 5 * 86400 });
+
+    const [resultado] = await integracaoPara(falso).receberWebhook(mensagem(10, 'Tem vaga no sabado? Quanto custa?'));
+
+    expect(resultado.acao).toBe('reabrir_card');
+    expect(falso.estado.leads[10].status_id).toBe(etapa('Em qualificação (robô)'));
+  });
+
+  it('leads dos funis da equipe (Urace, Comercial) nao sao tocados', async () => {
+    const { falso } = await contaComNovoFunil();
+    falso.criarLead(11, URACE, FIRST_CONTACT);
+    falso.criarLead(12, COMERCIAL_DA_EQUIPE, 112100844);
     const integracao = integracaoPara(falso);
 
-    expect(await integracao.receberWebhook(mensagem(11, 'Quanto custa?', { type: 'outgoing' }))).toHaveLength(0);
-    const [outroFunil] = await integracao.receberWebhook(mensagem(12, 'Quanto custa?'));
-    expect(outroFunil.ignorado).toBe('PIPELINE_FORA_DO_SDR');
+    const [a] = await integracao.receberWebhook(mensagem(11, 'Quanto custa?'));
+    const [b] = await integracao.receberWebhook(mensagem(12, 'Quero falar com alguem'));
 
-    const corpo = mensagem(11, 'Quanto custa?', { id: 'repetida' });
+    expect(a.ignorado).toBe('PIPELINE_FORA_DO_SDR');
+    expect(b.ignorado).toBe('PIPELINE_FORA_DO_SDR');
+    expect(falso.escritas()).toHaveLength(0);
+  });
+
+  it('etapa criada a mao no Novo funil nao e do robo', async () => {
+    const { falso, funilId } = await contaComNovoFunil();
+    const funil = falso.estado.pipelines.find(p => p.name === NOVO);
+    funil._embedded.statuses.push({ id: 777001, name: 'Etapa da equipe', sort: 500, type: 0 });
+    falso.criarLead(13, funilId, 777001);
+
+    const [resultado] = await integracaoPara(falso).receberWebhook(mensagem(13, 'Quanto custa?'));
+
+    expect(resultado.ignorado).toBe('ETAPA_DA_EQUIPE');
+  });
+
+  it('mensagem da equipe (outgoing) e repetida sao ignoradas', async () => {
+    const { falso, funilId, etapa } = await contaComNovoFunil();
+    falso.criarLead(14, funilId, etapa('Triagem'));
+    const integracao = integracaoPara(falso);
+
+    expect(await integracao.receberWebhook(mensagem(14, 'Quanto custa?', { type: 'outgoing' }))).toHaveLength(0);
+
+    const corpo = mensagem(14, 'Quanto custa?', { id: 'repetida' });
     await integracao.receberWebhook(corpo);
     const [segunda] = await integracao.receberWebhook(corpo);
     expect(segunda.ignorado).toBe('DUPLICADA');

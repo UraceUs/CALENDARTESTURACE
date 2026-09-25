@@ -373,7 +373,7 @@ O repositório inclui `render.yaml` para deploy via Blueprint no Render.
 | `POST` | `/api/sdr/avaliar` | Avalia uma interação: decide funil/etapa do card, resposta do robô e escalonamento |
 | `GET` | `/api/sdr/regras` | Retorna a parametrização ativa das regras do SDR |
 | `POST` | `/api/kommo/webhook?token=` | Webhook de mensagem do Kommo: aplica as regras no card (move, tags, nota, tarefa) |
-| `POST` | `/api/kommo/estrutura` | Confere o mapa de etapas contra a conta do Kommo e registra o webhook |
+| `POST` | `/api/kommo/estrutura` | Confere o mapa contra a conta do Kommo, cria o Novo funil se faltar e registra o webhook |
 
 ### Disponibilidade e configuração
 
