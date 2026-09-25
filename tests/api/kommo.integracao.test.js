@@ -432,3 +432,47 @@ describe('Kommo — rotas', () => {
     expect(sincronizarEstrutura).toHaveBeenCalledWith({ aplicar: false });
   });
 });
+
+describe('Servico enxuto do SDR (sdr-server.js)', () => {
+  const { createSdrApp } = require('../../sdr-server');
+  const ENV_ORIGINAL = { ...process.env };
+
+  afterEach(() => {
+    process.env = { ...ENV_ORIGINAL };
+  });
+
+  it('sobe sem Firebase e informa o modo do Kommo', async () => {
+    const resposta = await request(createSdrApp({ kommo: { modo: 'observar' } })).get('/health');
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.body).toEqual({ ok: true, service: 'sdr-agent-urace', kommo: 'observar' });
+  });
+
+  it('avalia interacoes pela mesma rota do backend completo', async () => {
+    delete process.env.SDR_WEBHOOK_TOKEN;
+    const resposta = await request(createSdrApp({ kommo: null }))
+      .post('/api/sdr/avaliar')
+      .send({ canal: 'whatsapp', texto: 'Quanto custa o coaching?' });
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.body.kommo.entraNoComercial).toBe(true);
+  });
+
+  it('recebe o webhook do Kommo e processa em segundo plano', async () => {
+    process.env.KOMMO_WEBHOOK_TOKEN = 'segredo';
+    const receberWebhook = jest.fn().mockResolvedValue([]);
+
+    const resposta = await request(createSdrApp({ kommo: { receberWebhook } }))
+      .post('/api/kommo/webhook?token=segredo')
+      .type('form')
+      .send('message[add][0][text]=Oi&message[add][0][element_id]=1&message[add][0][element_type]=2');
+
+    expect(resposta.status).toBe(200);
+    expect(receberWebhook).toHaveBeenCalledTimes(1);
+  });
+
+  it('rota desconhecida responde 404', async () => {
+    const resposta = await request(createSdrApp({ kommo: null })).get('/api/reservas');
+    expect(resposta.status).toBe(404);
+  });
+});

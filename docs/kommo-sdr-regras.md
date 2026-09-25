@@ -438,7 +438,7 @@ Proteção opcional: defina `SDR_WEBHOOK_TOKEN` no ambiente e envie
 ### 3.4 Como ligar no Kommo
 
 1. **Salesbot** (um por canal) com o primeiro passo `Webhook` →
-   `POST https://<backend>/api/sdr/avaliar`, enviando o payload da seção 3.2 com
+   `POST https://<servidor-sdr>/api/sdr/avaliar`, enviando o payload da seção 3.2 com
    os dados já conhecidos do contato e do card.
 2. Condicionais sobre a resposta:
    - `kommo.destino.mover = true` → colocar o card em `destino.pipeline` /
@@ -486,8 +486,22 @@ Testes: `npx jest tests/api/sdr.regras.test.js tests/api/sdr.route.test.js tests
 
 ### 3.6 Aplicar no Kommo (executor automático)
 
-O backend move os cards sozinho pela API do Kommo, sem depender de regra
-montada à mão no Salesbot. O Salesbot fica só com as **respostas** ao lead
+O SDR move os cards sozinho pela API do Kommo, sem depender de regra
+montada à mão no Salesbot.
+
+**Onde roda: no servidor do Command Center** (não usa o Render). O serviço é
+um processo Node único, sem Firebase, sem e-mail e sem dependências npm:
+
+```bash
+node sdr-server.js          # ou: npm run start:sdr   (porta: SDR_PORT, padrão 3100)
+```
+
+Requisitos do host: Node 18+ e um endereço **HTTPS público** apontando para a
+porta do serviço (proxy reverso do próprio servidor, ex. Nginx/Caddy, ou um
+túnel). O Kommo só entrega o texto da mensagem por webhook: pela API ele
+informa que houve mensagem, mas não o conteúdo, então sem endereço público o
+motor não tem o que ler. `GET /health` mostra se o Kommo está configurado e em
+que modo. O Salesbot fica só com as **respostas** ao lead
 (`/api/sdr/avaliar`); a **movimentação** é do executor (`lib/kommo/`).
 
 | Rota | Faz |
@@ -515,27 +529,29 @@ decisões e só então mudar para `aplicar`.
 
 1. **Kommo → Configurações → Integrações → Criar integração** (privada) →
    *Chaves e escopos* → gerar **token de longa duração**.
-2. **Render → Environment** do backend:
+2. **Variáveis de ambiente do serviço** no servidor do Command Center:
    - `KOMMO_SUBDOMINIO` — ex.: `urace` (de `urace.kommo.com`);
    - `KOMMO_TOKEN` — o token do passo 1;
    - `KOMMO_WEBHOOK_TOKEN` — segredo aleatório que vai na URL do webhook;
    - `SDR_WEBHOOK_TOKEN` — segredo administrativo (também protege `/api/sdr/avaliar`);
    - `KOMMO_RESPONSAVEL_ID` — id do usuário do Kommo que recebe os handoffs;
    - `KOMMO_MODO` — deixar vazio (observar) na primeira fase; `aplicar` depois.
-3. Fazer o merge deste PR (deploy do backend).
+3. Fazer o merge deste PR, copiar o repositório para o servidor e subir
+   `node sdr-server.js` como serviço (systemd, pm2 ou o supervisor que o
+   servidor já usa), com o HTTPS público apontando para ele.
 4. Conferir o plano, sem alterar nada (na conta atual deve vir só
    `pipelinesFaltando: [Novo funil]` com as 10 etapas):
    ```bash
-   curl -X POST https://<backend>/api/kommo/estrutura \
+   curl -X POST https://<servidor-sdr>/api/kommo/estrutura \
      -H "Authorization: Bearer $SDR_WEBHOOK_TOKEN" -H "Content-Type: application/json" -d '{}'
    ```
 5. Criar o **Novo funil** e registrar o webhook (funil só é criado se não
    existir; etapa nunca é acrescentada em funil existente; rodar de novo não
    duplica):
    ```bash
-   curl -X POST https://<backend>/api/kommo/estrutura \
+   curl -X POST https://<servidor-sdr>/api/kommo/estrutura \
      -H "Authorization: Bearer $SDR_WEBHOOK_TOKEN" -H "Content-Type: application/json" \
-     -d '{"aplicar": true, "webhookUrl": "https://<backend>/api/kommo/webhook?token=<KOMMO_WEBHOOK_TOKEN>"}'
+     -d '{"aplicar": true, "webhookUrl": "https://<servidor-sdr>/api/kommo/webhook?token=<KOMMO_WEBHOOK_TOKEN>"}'
    ```
    Alternativa local: `KOMMO_SUBDOMINIO=... KOMMO_TOKEN=... node scripts/kommo-setup.js --aplicar --webhook "<url>"`.
 6. No Kommo, apontar **cada canal** (WhatsApp, Instagram, Messenger, Telegram,
@@ -545,8 +561,8 @@ decisões e só então mudar para `aplicar`.
    registro pela API não tiver pegado, cadastrar manualmente a mesma URL.
 7. Teste de fumaça: de um número de teste, mandar "oi" (Novo funil ·
    Aguardando contexto) e depois "quanto custa?" (Novo funil · Em qualificação
-   (robô), com nota `promover_card`). Em modo observação, conferir no log. Os logs do Render mostram uma
-   linha `Kommo SDR:` por mensagem.
+   (robô), com nota `promover_card`). Em modo observação, conferir no log do
+   serviço: uma linha `Kommo SDR:` por mensagem.
 
 ---
 
@@ -597,7 +613,7 @@ Não é o funil final; é o mínimo que para de jogar lead cru no pipeline.
 |---|---|---|---|
 | 1 | Criar o **Novo funil** (seção 3.6) e apontar os canais para ele | Nós + empresa | mensagem de teste de cada canal cai em Triagem |
 | 1 | Validar este documento: horário de atendimento, portfólio do funil (Parte 4) | Nós | pendências da Parte 4 respondidas |
-| 2 | Ligar o executor em **modo observação** (seção 3.6): token, variáveis no Render, webhook | Nós | log mostra a decisão de cada mensagem real |
+| 2 | Subir `sdr-server.js` no servidor do Command Center em **modo observação** (seção 3.6): token, variáveis, HTTPS, webhook | Nós | log mostra a decisão de cada mensagem real |
 | 2 | Salesbot com passo `Webhook` → `/api/sdr/avaliar` só para as respostas do robô | Empresa + nós | robô responde "oi" com a pergunta de classificação |
 | 3 | Respostas do robô: saudação, preço (classificação antes do valor), agenda com **link do calendário** | Nós | lead recebe o link e a pergunta seguinte |
 | 3 | Handoff: tarefa + nota de resumo + notificação para o responsável único | Empresa | teste "quero falar com alguém" gera tarefa em ≤ 5 min |

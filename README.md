@@ -23,6 +23,7 @@ Sistema de agendamento e pré-vendas para karting profissional (U-RACE): reserva
 
 ```
 server.js                          # Backend Node.js (HTTP puro, sem framework)
+sdr-server.js                      # Serviço só do SDR/Kommo (servidor do Command Center)
 lib/
   sdr/                             # Motor de regras do SDR (entrada no Kommo + robô chat)
     regras.js                      # Parametrização: palavras-chave, pesos, SLAs, textos
@@ -30,6 +31,8 @@ lib/
     triagem.js                     # Decide o que desce da Entrada para o Comercial
     robochat.js                    # Decide resposta, silêncio e escalonamento
     index.js                       # avaliarInteracao() + validação do payload
+  rotas-sdr.js                     # Rotas /api/sdr e /api/kommo (usadas pelos dois servidores)
+  http.js                          # Utilitários HTTP compartilhados
   kommo/                           # Executor: aplica as decisões do SDR no Kommo via API
 scripts/
   kommo-setup.js                   # Cria/confere os funis no Kommo pela linha de comando
@@ -307,6 +310,10 @@ O Salesbot do Kommo consome a decisão pelo endpoint `POST /api/sdr/avaliar`.
 - `KOMMO_WEBHOOK_TOKEN` — segredo na URL de `POST /api/kommo/webhook`
 - `KOMMO_RESPONSAVEL_ID` — usuário do Kommo que recebe os handoffs
 - `KOMMO_MODO` — vazio = observar (só registra no log o que faria); `aplicar` = escreve no Kommo
+
+O SDR **não roda no Render**: sobe como serviço próprio no servidor do Command
+Center com `node sdr-server.js` (Node 18+, sem Firebase nem dependências npm) e
+precisa de um endereço HTTPS público para o webhook do Kommo.
 
 Passo a passo de ativação: seção 3.6 de [`docs/kommo-sdr-regras.md`](docs/kommo-sdr-regras.md).
 
