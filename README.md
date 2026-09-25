@@ -30,6 +30,9 @@ lib/
     triagem.js                     # Decide o que desce da Entrada para o Comercial
     robochat.js                    # Decide resposta, silêncio e escalonamento
     index.js                       # avaliarInteracao() + validação do payload
+  kommo/                           # Executor: aplica as decisões do SDR no Kommo via API
+scripts/
+  kommo-setup.js                   # Cria/confere os funis no Kommo pela linha de comando
 docs/
   kommo-sdr-regras.md              # Regras de negócio do Kommo/SDR (documento oficial)
 public/
@@ -299,7 +302,12 @@ O Salesbot do Kommo consome a decisão pelo endpoint `POST /api/sdr/avaliar`.
 ### Variáveis do SDR
 
 - `SDR_WEBHOOK_TOKEN` (opcional — quando definido, `POST /api/sdr/avaliar` exige
-  `Authorization: Bearer <token>`)
+  `Authorization: Bearer <token>`; obrigatório para `POST /api/kommo/estrutura`)
+- `KOMMO_SUBDOMINIO`, `KOMMO_TOKEN` — ligam o executor que move os cards no Kommo
+- `KOMMO_WEBHOOK_TOKEN` — segredo na URL de `POST /api/kommo/webhook`
+- `KOMMO_RESPONSAVEL_ID` — usuário do Kommo que recebe os handoffs
+
+Passo a passo de ativação: seção 3.6 de [`docs/kommo-sdr-regras.md`](docs/kommo-sdr-regras.md).
 
 ---
 
@@ -363,6 +371,8 @@ O repositório inclui `render.yaml` para deploy via Blueprint no Render.
 |---|---|---|
 | `POST` | `/api/sdr/avaliar` | Avalia uma interação: decide funil/etapa do card, resposta do robô e escalonamento |
 | `GET` | `/api/sdr/regras` | Retorna a parametrização ativa das regras do SDR |
+| `POST` | `/api/kommo/webhook?token=` | Webhook de mensagem do Kommo: aplica as regras no card (move, tags, nota, tarefa) |
+| `POST` | `/api/kommo/estrutura` | Confere/cria os funis Entrada e Comercial e registra o webhook |
 
 ### Disponibilidade e configuração
 

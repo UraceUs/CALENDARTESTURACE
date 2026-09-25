@@ -7,6 +7,7 @@ const admin = require('firebase-admin');
 const nodemailer = require('nodemailer');
 const { google } = require('googleapis');
 const sdr = require('./lib/sdr');
+const kommo = require('./lib/kommo');
 
 const PORT = Number(process.env.PORT || 3000);
 const RESERVAS_COLLECTION = 'reservas';
@@ -785,6 +786,15 @@ function parseJsonBody(req) {
   });
 }
 
+function readRawBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
 function sendJson(res, statusCode, payload) {
   res.statusCode = statusCode;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -1248,7 +1258,23 @@ function autorizarWebhookSdr(req, env = process.env) {
   return { ok: false };
 }
 
+// O Kommo nao envia cabecalho customizado no webhook: o segredo vai na URL.
+function autorizarWebhookKommo(requestUrl, env = process.env) {
+  const esperado = env.KOMMO_WEBHOOK_TOKEN;
+  return Boolean(esperado) && requestUrl.searchParams.get('token') === esperado;
+}
+
+// Acao administrativa (cria funis no Kommo): exige SDR_WEBHOOK_TOKEN definido.
+function autorizarAdminKommo(req, env = process.env) {
+  return Boolean(env.SDR_WEBHOOK_TOKEN) && autorizarWebhookSdr(req, env).ok;
+}
+
+function erroKommo(res, status, code, message) {
+  sendJson(res, status, { ok: false, error: { code, message, details: [] } });
+}
+
 function createApp(options = {}) {
+  const kommoIntegracao = options.kommo !== undefined ? options.kommo : kommo.criarIntegracaoDoAmbiente();
   const repo = options.repo || createFirestoreReservaRepository();
   const configRepo = options.configRepo || createFirestoreConfigRepository();
   const emailService = options.emailService || createEmailService();
@@ -1333,6 +1359,72 @@ function createApp(options = {}) {
             code: 'INTERNAL_ERROR',
             message: 'Erro interno ao avaliar a interacao.',
             details: [error && error.message ? error.message : 'UNKNOWN']
+          }
+        });
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && requestUrl.pathname === '/api/kommo/webhook') {
+      if (!kommoIntegracao) {
+        erroKommo(res, 503, 'KOMMO_NAO_CONFIGURADO', 'Defina KOMMO_SUBDOMINIO e KOMMO_TOKEN.');
+        return;
+      }
+      if (!autorizarWebhookKommo(requestUrl)) {
+        erroKommo(res, 401, 'UNAUTHORIZED', 'Token invalido para o webhook do Kommo.');
+        return;
+      }
+
+      let corpo;
+      try {
+        corpo = kommo.parseCorpoWebhook(await readRawBody(req), req.headers['content-type'] || '');
+      } catch (error) {
+        erroKommo(res, 400, 'INVALID_BODY', 'Corpo do webhook invalido.');
+        return;
+      }
+
+      // O Kommo desativa webhooks que demoram: responde ja e processa depois.
+      const recebidas = kommo.extrairMensagensRecebidas(corpo).length;
+      sendJson(res, 200, { ok: true, recebidas });
+      kommoIntegracao.receberWebhook(corpo).catch(error => {
+        console.error('Kommo: erro no processamento do webhook:', error);
+      });
+      return;
+    }
+
+    if (req.method === 'POST' && requestUrl.pathname === '/api/kommo/estrutura') {
+      if (!kommoIntegracao) {
+        erroKommo(res, 503, 'KOMMO_NAO_CONFIGURADO', 'Defina KOMMO_SUBDOMINIO e KOMMO_TOKEN.');
+        return;
+      }
+      if (!autorizarAdminKommo(req)) {
+        erroKommo(res, 401, 'UNAUTHORIZED', 'Exige Authorization: Bearer <SDR_WEBHOOK_TOKEN>.');
+        return;
+      }
+
+      let payload;
+      try {
+        payload = await parseJsonBody(req);
+      } catch (error) {
+        erroKommo(res, 400, 'INVALID_JSON', 'Corpo da requisicao nao e um JSON valido.');
+        return;
+      }
+
+      try {
+        const estrutura = await kommoIntegracao.sincronizarEstrutura({ aplicar: payload.aplicar === true });
+        let webhook = null;
+        if (payload.aplicar === true && typeof payload.webhookUrl === 'string' && payload.webhookUrl.startsWith('https://')) {
+          webhook = await kommoIntegracao.registrarWebhook(payload.webhookUrl);
+        }
+        sendJson(res, 200, { ok: true, ...estrutura, webhook });
+      } catch (error) {
+        console.error('Kommo: erro ao sincronizar estrutura:', error);
+        sendJson(res, 502, {
+          ok: false,
+          error: {
+            code: 'KOMMO_ERROR',
+            message: error.message,
+            details: error.detalhes ? [error.detalhes] : []
           }
         });
       }
@@ -1863,6 +1955,7 @@ if (require.main === module) {
 module.exports = {
   createApp,
   sdr,
+  kommo,
   createEmailService,
   createFirestoreReservaRepository,
   normalizePitId,

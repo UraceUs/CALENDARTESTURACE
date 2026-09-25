@@ -453,7 +453,61 @@ Proteção opcional: defina `SDR_WEBHOOK_TOKEN` no ambiente e envie
 | O que conta como e-mail automático | `lib/sdr/regras.js` | `PALAVRAS.automatico`, `REMETENTES_AUTOMATICOS` |
 | Quem recebe o handoff | `lib/sdr/regras.js` | `ATENDIMENTO` |
 
-Testes: `npx jest tests/api/sdr.regras.test.js tests/api/sdr.route.test.js`.
+Testes: `npx jest tests/api/sdr.regras.test.js tests/api/sdr.route.test.js tests/api/kommo.integracao.test.js`.
+
+### 3.6 Aplicar no Kommo (executor automático)
+
+O backend move os cards sozinho pela API do Kommo, sem depender de regra
+montada à mão no Salesbot. O Salesbot fica só com as **respostas** ao lead
+(`/api/sdr/avaliar`); a **movimentação** é do executor (`lib/kommo/`).
+
+| Rota | Faz |
+|---|---|
+| `POST /api/kommo/estrutura` | Confere e cria os funis Entrada e Comercial com as etapas; opcionalmente registra o webhook. Exige `Authorization: Bearer <SDR_WEBHOOK_TOKEN>`. |
+| `POST /api/kommo/webhook?token=<KOMMO_WEBHOOK_TOKEN>` | Recebe "mensagem recebida" do Kommo, avalia e aplica: move a etapa (desce da Entrada para o Comercial), tags, nota e, no handoff, tarefa para o responsável. Responde na hora e processa em segundo plano. |
+
+Por mensagem do lead, o executor lê o card, avalia com as mesmas regras e:
+
+- move para `kommo.destino` (etapa encontrada pelo **nome**; "Reserva
+  confirmada" e "Perdido" usam os fechamentos nativos do Kommo, ganho/perdido);
+- adiciona tags sem apagar as existentes (`tags_to_add`);
+- escreve nota **só** quando o card entra no Comercial ou vai para humano;
+- no handoff cria tarefa com o prazo do SLA para `KOMMO_RESPONSAVEL_ID` e aplica
+  `sdr:bot-silenciado` (o robô para de responder naquele card);
+- ignora mensagem enviada pela equipe, mensagem repetida e lead de funil que não
+  seja Entrada/Comercial (funis antigos ficam intactos).
+
+**Passo a passo para ligar:**
+
+1. **Kommo → Configurações → Integrações → Criar integração** (privada) →
+   *Chaves e escopos* → gerar **token de longa duração**.
+2. **Render → Environment** do backend:
+   - `KOMMO_SUBDOMINIO` — ex.: `urace` (de `urace.kommo.com`);
+   - `KOMMO_TOKEN` — o token do passo 1;
+   - `KOMMO_WEBHOOK_TOKEN` — segredo aleatório que vai na URL do webhook;
+   - `SDR_WEBHOOK_TOKEN` — segredo administrativo (também protege `/api/sdr/avaliar`);
+   - `KOMMO_RESPONSAVEL_ID` — id do usuário do Kommo que recebe os handoffs.
+3. Fazer o merge deste PR (deploy do backend).
+4. Conferir o que falta, sem alterar nada:
+   ```bash
+   curl -X POST https://<backend>/api/kommo/estrutura \
+     -H "Authorization: Bearer $SDR_WEBHOOK_TOKEN" -H "Content-Type: application/json" -d '{}'
+   ```
+5. Criar funis/etapas e registrar o webhook:
+   ```bash
+   curl -X POST https://<backend>/api/kommo/estrutura \
+     -H "Authorization: Bearer $SDR_WEBHOOK_TOKEN" -H "Content-Type: application/json" \
+     -d '{"aplicar": true, "webhookUrl": "https://<backend>/api/kommo/webhook?token=<KOMMO_WEBHOOK_TOKEN>"}'
+   ```
+   Alternativa local: `KOMMO_SUBDOMINIO=... KOMMO_TOKEN=... node scripts/kommo-setup.js --aplicar --webhook "<url>"`.
+6. No Kommo, apontar **cada canal** (WhatsApp, Instagram, Messenger, Telegram,
+   chat do site, e-mail) para o funil **Entrada**. Em *Integrações → Web hooks*,
+   conferir que o webhook aparece com o evento de **mensagem recebida**; se o
+   registro pela API não tiver pegado, cadastrar manualmente a mesma URL.
+7. Teste de fumaça: de um número de teste, mandar "oi" (card fica em Entrada /
+   Aguardando contexto) e depois "quanto custa?" (card desce para Comercial /
+   Em qualificação, com nota `promover_card`). Os logs do Render mostram uma
+   linha `Kommo SDR:` por mensagem.
 
 ---
 
@@ -502,9 +556,10 @@ Não é o funil final; é o mínimo que para de jogar lead cru no pipeline.
 
 | Dia | Entrega | Quem | Pronto quando |
 |---|---|---|---|
-| 1 | Criar os funis **Entrada** e **Comercial** com as etapas da seção 1.6; apontar todos os canais para a Entrada | Empresa (Kommo) | mensagem de teste de cada canal aparece na Triagem |
+| 1 | Apontar todos os canais para o funil **Entrada** (os funis e etapas são criados pelo executor, seção 3.6) | Empresa (Kommo) | mensagem de teste de cada canal aparece na Triagem |
 | 1 | Validar este documento: horário de atendimento, portfólio do funil (Parte 4) | Nós | pendências da Parte 4 respondidas |
-| 2 | Salesbot com passo `Webhook` → `/api/sdr/avaliar` enviando `card.pipeline`; condicional sobre `kommo.destino` | Empresa + nós | card de teste desce sozinho ao perguntar preço |
+| 2 | Ligar o executor (seção 3.6): token, variáveis no Render, `/api/kommo/estrutura` e webhook | Nós | card de teste desce sozinho ao perguntar preço |
+| 2 | Salesbot com passo `Webhook` → `/api/sdr/avaliar` só para as respostas do robô | Empresa + nós | robô responde "oi" com a pergunta de classificação |
 | 2 | Regra de e-mail: remetentes automáticos vão para Automáticos | Empresa | e-mail com código não aparece no Comercial |
 | 3 | Respostas do robô: saudação, preço (classificação antes do valor), agenda com **link do calendário** | Nós | lead recebe o link e a pergunta seguinte |
 | 3 | Handoff: tarefa + nota de resumo + notificação para o responsável único | Empresa | teste "quero falar com alguém" gera tarefa em ≤ 5 min |
