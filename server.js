@@ -6,6 +6,10 @@ const dns = require('dns').promises;
 const admin = require('firebase-admin');
 const nodemailer = require('nodemailer');
 const { google } = require('googleapis');
+const sdr = require('./lib/sdr');
+const kommo = require('./lib/kommo');
+const { parseJsonBody, sendJson } = require('./lib/http');
+const { tratarRotasSdr } = require('./lib/rotas-sdr');
 
 const PORT = Number(process.env.PORT || 3000);
 const RESERVAS_COLLECTION = 'reservas';
@@ -763,33 +767,6 @@ function isNonEmptyString(value, min = 1, max = 255) {
   return trimmed.length >= min && trimmed.length <= max;
 }
 
-function parseJsonBody(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    req.on('data', chunk => chunks.push(chunk));
-    req.on('end', () => {
-      if (chunks.length === 0) {
-        resolve({});
-        return;
-      }
-
-      try {
-        const raw = Buffer.concat(chunks).toString('utf8');
-        resolve(JSON.parse(raw));
-      } catch (error) {
-        reject(new Error('INVALID_JSON'));
-      }
-    });
-    req.on('error', reject);
-  });
-}
-
-function sendJson(res, statusCode, payload) {
-  res.statusCode = statusCode;
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.end(JSON.stringify(payload));
-}
-
 function inferStage(input) {
   if (input === 1 || input === '1' || input === 'etapa1' || input === 'stage1') {
     return 1;
@@ -1232,6 +1209,7 @@ function createFirestoreConfigRepository() {
 }
 
 function createApp(options = {}) {
+  const kommoIntegracao = options.kommo !== undefined ? options.kommo : kommo.criarIntegracaoDoAmbiente();
   const repo = options.repo || createFirestoreReservaRepository();
   const configRepo = options.configRepo || createFirestoreConfigRepository();
   const emailService = options.emailService || createEmailService();
@@ -1250,12 +1228,16 @@ function createApp(options = {}) {
     const requestUrl = new URL(req.url, 'http://localhost');
 
     if (req.method === 'GET' && requestUrl.pathname === '/') {
-      sendJson(res, 200, { ok: true, service: 'calendar-backend' });
+      sendJson(res, 200, { ok: true, service: 'sdr-agent-urace-backend' });
       return;
     }
 
     if (req.method === 'GET' && requestUrl.pathname === '/health') {
       sendJson(res, 200, { ok: true, status: 'healthy' });
+      return;
+    }
+
+    if (await tratarRotasSdr(req, res, requestUrl, { kommo: kommoIntegracao })) {
       return;
     }
 
@@ -1782,6 +1764,8 @@ if (require.main === module) {
 
 module.exports = {
   createApp,
+  sdr,
+  kommo,
   createEmailService,
   createFirestoreReservaRepository,
   normalizePitId,

@@ -1,13 +1,14 @@
 {
-  "name": "calendar",
+  "name": "sdr-agent-urace",
   "version": "1.0.0",
-  "description": "Estrutura organizada do projeto:",
+  "description": "SDR Agent U-RACE — agendamento de karting com SDR automatizado (Kommo + robo chat)",
   "main": "server.js",
   "scripts": {
     "test": "npm run test:api && npm run test:e2e",
     "test:api": "jest --runInBand",
     "test:e2e": "playwright test",
-    "start": "node server.js"
+    "start": "node server.js",
+    "start:sdr": "node sdr-server.js"
   },
   "keywords": [],
   "author": "",
@@ -23,5 +24,8 @@
     "jest": "^30.3.0",
     "playwright": "^1.59.1",
     "supertest": "^7.2.2"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
