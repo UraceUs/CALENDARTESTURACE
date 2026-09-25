@@ -27,7 +27,7 @@ lib/
   sdr/                             # Motor de regras do SDR (entrada no Kommo + robô chat)
     regras.js                      # Parametrização: palavras-chave, pesos, SLAs, textos
     classificador.js               # Leitura de sinais da mensagem
-    triagem.js                     # Decide o que vira card no Kommo
+    triagem.js                     # Decide o que desce da Entrada para o Comercial
     robochat.js                    # Decide resposta, silêncio e escalonamento
     index.js                       # avaliarInteracao() + validação do payload
 docs/
@@ -272,21 +272,24 @@ Campos opcionais aceitos no `POST /api/reservas` para preencher a descrição do
 
 Regras completas em [`docs/kommo-sdr-regras.md`](docs/kommo-sdr-regras.md).
 
-**Princípio:** todas as mensagens continuam chegando por todos os canais e ficam
-no inbox do Kommo. O **card** só é criado quando a interação tem sinal comercial —
-nunca para toda e qualquer interação.
+**Princípio:** todas as mensagens continuam chegando por todos os canais. Dois
+funis no Kommo: **Entrada** recebe tudo (e-mails, códigos, notificações, "oi",
+spam) e **Comercial** só recebe lead. O card só desce para o Comercial quando a
+interação tem sinal comercial.
 
 Resumo:
 
-- **Cria card:** preço, disponibilidade, como contratar, pedido de humano, demanda
-  corporativa, tema sensível, Pit ID informado, reserva das Etapas 1 e 2, formulário,
-  chamada perdida, ou soma de sinais fracos ≥ 40 pontos.
-- **Não cria card:** saudação isolada, agradecimento, spam/fornecedor, grupo ou lista
-  de transmissão, contato interno, mídia sem texto, pergunta operacional genérica e
-  contato que já tem card aberto (anexa, não duplica).
-- **Robô chat (SDR):** qualifica na ordem serviço → data → período → pilotos →
-  experiência → nome → contato; nunca inventa preço ou disponibilidade; cala quando
-  um humano assume a conversa; follow-up em +30 min, +24 h e +72 h.
+- **Desce para o Comercial:** preço, disponibilidade, como contratar, pedido de
+  humano, demanda corporativa, tema sensível, Pit ID informado, reserva das Etapas 1
+  e 2, formulário, chamada perdida, ou soma de sinais fracos ≥ 40 pontos.
+- **Fica na Entrada:** e-mail automático/código de verificação, saudação isolada,
+  agradecimento, spam/fornecedor, grupo ou lista de transmissão, contato interno,
+  mídia sem texto e pergunta operacional genérica. Cada caso tem sua etapa.
+- **Robô chat (SDR):** classifica o piloto (A/B/C/D) antes de qualquer valor e
+  qualifica uma pergunta por vez; nunca inventa preço ou disponibilidade; cala quando
+  um humano assume a conversa; follow-up em +2 h, +1 dia, +3 dias e +7 dias.
+- **Uma pessoa no atendimento:** handoff vai para o responsável único; só
+  prioridade alta interrompe, o resto vira fila de tarefas.
 - **Escalona para humano:** lead qualificado, pedido explícito, tema sensível, lead
   insatisfeito, falha técnica (SLA 5 min úteis); negociação, corporativo, falta de
   entendimento e reserva parada (SLA 15 min úteis).
@@ -358,7 +361,7 @@ O repositório inclui `render.yaml` para deploy via Blueprint no Render.
 
 | Método | Rota | Descrição |
 |---|---|---|
-| `POST` | `/api/sdr/avaliar` | Avalia uma interação: decide criação de card, resposta do robô e escalonamento |
+| `POST` | `/api/sdr/avaliar` | Avalia uma interação: decide funil/etapa do card, resposta do robô e escalonamento |
 | `GET` | `/api/sdr/regras` | Retorna a parametrização ativa das regras do SDR |
 
 ### Disponibilidade e configuração

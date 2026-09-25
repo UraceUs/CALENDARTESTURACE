@@ -1,7 +1,9 @@
 # SDR Agent U-RACE — Regras Operacionais (Kommo + Robô Chat)
 
-Este documento define **o que entra no Kommo** (vira card) e **como o robô chat
-atua como SDR**: a quem responde, como responde e quando aciona um humano.
+Este documento define **como o Kommo separa o que é lead do que não é** (dois
+funis: Entrada e Comercial), **quando um card desce para o Comercial** e **como
+o robô chat atua como SDR**: a quem responde, como responde e quando aciona um
+humano.
 
 As regras estão implementadas em `lib/sdr/` e expostas pelo backend em
 `POST /api/sdr/avaliar`. Alterar política de atendimento = alterar
@@ -12,12 +14,57 @@ As regras estão implementadas em `lib/sdr/` e expostas pelo backend em
 ## Princípio fundamental
 
 > **Todas as mensagens continuam chegando normalmente por todos os canais.**
-> O card é um evento comercial, não um registro de conversa.
+> A Entrada recebe tudo; o Comercial só recebe lead.
 
 - O inbox do Kommo (WhatsApp, Instagram, Messenger, Telegram, site, e-mail)
   continua recebendo e exibindo **100% das mensagens**.
-- O **card só nasce** quando a interação cumpre pelo menos uma regra de entrada.
+- Tudo pode cair no funil **Entrada** (e-mails, códigos, notificações, "oi",
+  spam). Ninguém do comercial trabalha nele.
+- Um card **só desce para o funil Comercial** quando a interação cumpre pelo
+  menos uma regra de entrada (seção 1.2).
 - Nenhuma interação abre um segundo card para um contato que já tem card aberto.
+
+---
+
+## Parte 0 — Os dois funis
+
+Com uma pessoa só no atendimento, o que funcionava "na mão" com o time todo
+mexendo no Kommo não escala. A regra passa a ser: **o comercial só abre o funil
+Comercial**, e ele só tem lead.
+
+```
+ Todos os canais ──► Funil ENTRADA (recebe tudo)
+                      ├─ Triagem (novo contato)
+                      ├─ Aguardando contexto (robô perguntou)   ◄─ "oi", áudio solto
+                      ├─ Conversa sem sinal comercial          ◄─ "obrigado", "onde fica"
+                      ├─ Automáticos (e-mails, códigos, notificações)
+                      ├─ Ruído (spam, fornecedor, interno)
+                      └─ Não contatar (opt-out)
+                             │
+                             │  regra de entrada cumprida (seção 1.2)
+                             ▼
+                     Funil COMERCIAL (só lead)
+                      Novo lead → Em qualificação (bot) → Qualificado - humano
+                      → Reserva Etapa 1 → Briefing Etapa 2 → Confirmada | Perdido
+```
+
+**Regras de movimentação:**
+
+1. Contato novo sem sinal comercial fica na Entrada, na etapa que o motor indica
+   em `kommo.destino.etapa`.
+2. Quando o mesmo contato manda uma mensagem com sinal comercial, o card da
+   Entrada **desce** para o Comercial (`promover_card`). Não nasce outro card.
+3. Evento do site (Pit ID, Driver Briefing, formulário) e chamada perdida descem
+   direto, na etapa certa do funil de reserva.
+4. Lead que já está no Comercial **nunca volta** para a Entrada. Opt-out dentro
+   do Comercial fecha o card como **Perdido**.
+5. E-mail de sistema, código de verificação, newsletter e notificação de
+   plataforma vão para **Automáticos** e o robô não responde. Remetente
+   `no-reply`/`notifications`/`mailer-daemon` conta como automático mesmo com
+   texto que pareça comercial. "Unsubscribe" no rodapé de newsletter não é
+   opt-out.
+6. O Salesbot precisa enviar `card.pipeline` (`Entrada` ou `Comercial`). Sem
+   isso, o motor trata o card como Comercial (lado seguro: não duplica).
 
 ---
 
@@ -27,13 +74,17 @@ As regras estão implementadas em `lib/sdr/` e expostas pelo backend em
 
 | Ação | Significado |
 |---|---|
-| `ignorar` | Não vira card e não recebe resposta automática (ruído estrutural). |
-| `somente_conversa` | Mensagem fica no inbox, **sem card**. |
-| `criar_card` | Abre card novo no pipeline. |
-| `anexar_card` | Registra no card já existente (nunca duplica). |
-| `reabrir_card` | Card fechado recente volta ao pipeline. |
+| `ignorar` | Fica na Entrada (Ruído) e não recebe resposta automática. |
+| `somente_conversa` | Fica na Entrada; **não desce** para o Comercial. |
+| `criar_card` | Contato sem card nenhum: cria direto no Comercial. |
+| `promover_card` | Card que estava na Entrada **desce** para o Comercial. |
+| `anexar_card` | Registra no card já aberto no Comercial (nunca duplica). |
+| `reabrir_card` | Card fechado recente volta ao Comercial. |
 
-### 1.2 O que **CRIA** card
+Em toda resposta, `kommo.destino = { pipeline, etapa, mover }` diz onde o card
+tem que ficar. `mover = false` significa "não mexa no card".
+
+### 1.2 O que **desce para o Comercial**
 
 | # | Gatilho | Motivo (código) | Estágio inicial |
 |---|---|---|---|
@@ -50,13 +101,14 @@ As regras estão implementadas em `lib/sdr/` e expostas pelo backend em
 | 11 | Lead já forneceu serviço + data/período + contato | `DADOS_QUALIFICACAO` | Em qualificação (bot) |
 | 12 | Soma de sinais fracos ≥ 40 pontos | `SCORE_QUALIFICACAO` | Em qualificação (bot) |
 
-### 1.3 O que **NÃO** cria card
+### 1.3 O que **fica na Entrada**
 
 | # | Situação | Motivo (código) | Tratamento |
 |---|---|---|---|
 | 1 | Contato interno / número de teste da equipe | `CONTATO_INTERNO` | `ignorar` |
 | 2 | Grupo ou lista de transmissão | `GRUPO_OU_TRANSMISSAO` | `ignorar` |
-| 3 | Spam, fornecedor, agência, currículo, empréstimo | `SPAM_OU_OFERTA` | Conversa + tag `sdr:spam` |
+| 3 | E-mail automático, código de verificação, newsletter, notificação de plataforma | `MENSAGEM_AUTOMATICA` | Etapa Automáticos, sem resposta |
+| 3b | Spam, fornecedor, agência, currículo, empréstimo | `SPAM_OU_OFERTA` | Conversa + tag `sdr:spam` |
 | 4 | Pedido de opt-out ("não quero mais receber") | `OPT_OUT` | Conversa + tag `sdr:opt-out` |
 | 5 | Saudação isolada ("oi", "bom dia") sem intenção | `SAUDACAO_ISOLADA` | Conversa; bot pergunta o que a pessoa precisa |
 | 6 | Agradecimento, "ok", "valeu", encerramento | `AGRADECIMENTO_OU_ENCERRAMENTO` | Conversa, sem resposta |
@@ -89,12 +141,26 @@ Exemplos:
 
 ### 1.5 Deduplicação e reabertura
 
-1. Card **aberto** para o contato → sempre `anexar_card`.
-2. Card **fechado há ≤ 30 dias** + novo sinal comercial → `reabrir_card`
-   (tag `sdr:reaberto`).
-3. Card fechado há **> 30 dias** → card novo (novo ciclo de compra).
+1. Card **aberto no Comercial** para o contato → sempre `anexar_card`.
+2. Card **na Entrada** + sinal comercial → `promover_card` (o mesmo card desce).
+3. Card do Comercial **fechado há ≤ 30 dias** + novo sinal comercial →
+   `reabrir_card` (tag `sdr:reaberto`).
+4. Card do Comercial fechado há **> 30 dias** → card novo (novo ciclo de compra).
 
-### 1.6 Pipeline sugerido
+### 1.6 Etapas dos dois funis
+
+**Funil Entrada** — ninguém do comercial trabalha aqui; revisão semanal rápida.
+
+| Etapa | O que cai | Dono |
+|---|---|---|
+| Triagem (novo contato) | contato novo ainda não classificado | Robô |
+| Aguardando contexto (robô perguntou) | "oi", áudio/foto sem texto | Robô |
+| Conversa sem sinal comercial | "obrigado", pergunta operacional solta | Robô |
+| Automáticos (e-mails, códigos, notificações) | e-mail de sistema, código, newsletter | — |
+| Ruído (spam, fornecedor, interno) | spam, fornecedor, currículo, grupo, interno | — |
+| Não contatar (opt-out) | pediu para não receber mensagens | — |
+
+**Funil Comercial** — só lead.
 
 | Ordem | Estágio | Dono |
 |---|---|---|
@@ -224,7 +290,9 @@ horário de verão calculado, não offset fixo.
 **Como notifica (ações no Kommo):**
 
 1. Move o card para **Qualificado - humano** (ou mantém o estágio do funil).
-2. Atribui responsável por rodízio comercial.
+2. Atribui ao **responsável único** (`responsavel_unico`): com uma pessoa no
+   comercial não há rodízio. Só prioridade **alta** interrompe
+   (`escalonamento.interromper = true`); média entra na fila de tarefas.
 3. Cria **tarefa** com prazo conforme o SLA (fora do horário, contado da abertura).
 4. Adiciona **nota estruturada** com o resumo: canal, contato, serviço, data,
    período, pilotos, experiência, Pit ID, score, intenções e última mensagem.
@@ -286,6 +354,7 @@ Proteção opcional: defina `SDR_WEBHOOK_TOKEN` no ambiente e envie
   "card": {
     "existe": true,
     "id": "4412",
+    "pipeline": "Comercial",
     "estagio": "Em qualificação (bot)",
     "status": "aberto",
     "responsavelHumano": null,
@@ -309,11 +378,13 @@ Proteção opcional: defina `SDR_WEBHOOK_TOKEN` no ambiente e envie
 ```json
 {
   "ok": true,
-  "versaoRegras": "1.0.0",
+  "versaoRegras": "2.0.0",
   "kommo": {
     "acao": "criar_card",
     "criarCard": true,
     "atualizaCard": true,
+    "entraNoComercial": true,
+    "destino": { "pipeline": "Comercial", "etapa": "Em qualificacao (bot)", "mover": true },
     "motivo": "INTENCAO_COMERCIAL",
     "descricao": "Sinal comercial explicito (preco, agenda, contratacao).",
     "estagioSugerido": "Em qualificacao (bot)",
@@ -341,10 +412,12 @@ Proteção opcional: defina `SDR_WEBHOOK_TOKEN` no ambiente e envie
    `POST https://<backend>/api/sdr/avaliar`, enviando o payload da seção 3.2 com
    os dados já conhecidos do contato e do card.
 2. Condicionais sobre a resposta:
-   - `kommo.acao = criar_card` → criar card no pipeline com `kommo.estagioSugerido`,
-     `kommo.campos` e `kommo.tags`;
-   - `anexar_card` / `reabrir_card` → atualizar o card existente;
-   - `somente_conversa` / `ignorar` → não tocar no pipeline.
+   - `kommo.destino.mover = true` → colocar o card em `destino.pipeline` /
+     `destino.etapa` (é isso que faz o card **descer** da Entrada para o
+     Comercial), com `kommo.campos` e `kommo.tags`;
+   - `kommo.destino.mover = false` → não mexer no card;
+   - `kommo.acao` diz o porquê (`criar_card`, `promover_card`, `anexar_card`,
+     `reabrir_card`, `somente_conversa`, `ignorar`) e vai como nota/tag.
    - `robo.responder = true` → enviar `robo.mensagens` na ordem.
    - `robo.escalonamento != null` → mover estágio, atribuir responsável, criar a
      tarefa com `tarefa.prazoMinutos` e colar `resumo` como nota.
@@ -375,7 +448,10 @@ Proteção opcional: defina `SDR_WEBHOOK_TOKEN` no ambiente e envie
 | Classificação A/B/C/D | `lib/sdr/regras.js` | `CLASSIFICACAO_EXPERIENCIA` |
 | Teto de re-alertas | `lib/sdr/regras.js` | `MAX_REALERTAS` |
 | Janela de reabertura de card | `lib/sdr/regras.js` | `JANELA_REABERTURA_DIAS` |
-| Estágios do pipeline | `lib/sdr/regras.js` | `ESTAGIOS` |
+| Etapas do funil Comercial | `lib/sdr/regras.js` | `ESTAGIOS` |
+| Etapas do funil Entrada | `lib/sdr/regras.js` | `ETAPAS_ENTRADA` |
+| O que conta como e-mail automático | `lib/sdr/regras.js` | `PALAVRAS.automatico`, `REMETENTES_AUTOMATICOS` |
+| Quem recebe o handoff | `lib/sdr/regras.js` | `ATENDIMENTO` |
 
 Testes: `npx jest tests/api/sdr.regras.test.js tests/api/sdr.route.test.js`.
 
@@ -416,3 +492,32 @@ como parâmetro, marcados, e não como verdade:
 
 Enquanto esses pontos não forem confirmados, o robô não afirma nenhum deles ao
 lead: ele escala.
+
+---
+
+## Parte 5 — Funil mínimo em 7 dias
+
+Objetivo da semana: um funil que funcione com **uma pessoa** no atendimento.
+Não é o funil final; é o mínimo que para de jogar lead cru no pipeline.
+
+| Dia | Entrega | Quem | Pronto quando |
+|---|---|---|---|
+| 1 | Criar os funis **Entrada** e **Comercial** com as etapas da seção 1.6; apontar todos os canais para a Entrada | Empresa (Kommo) | mensagem de teste de cada canal aparece na Triagem |
+| 1 | Validar este documento: horário de atendimento, portfólio do funil (Parte 4) | Nós | pendências da Parte 4 respondidas |
+| 2 | Salesbot com passo `Webhook` → `/api/sdr/avaliar` enviando `card.pipeline`; condicional sobre `kommo.destino` | Empresa + nós | card de teste desce sozinho ao perguntar preço |
+| 2 | Regra de e-mail: remetentes automáticos vão para Automáticos | Empresa | e-mail com código não aparece no Comercial |
+| 3 | Respostas do robô: saudação, preço (classificação antes do valor), agenda com **link do calendário** | Nós | lead recebe o link e a pergunta seguinte |
+| 3 | Handoff: tarefa + nota de resumo + notificação para o responsável único | Empresa | teste "quero falar com alguém" gera tarefa em ≤ 5 min |
+| 4 | Site → Kommo: eventos `reserva_etapa1` / `reserva_etapa2` com Pit ID | Nós | reserva de teste aparece na etapa certa |
+| 5 | Follow-up (2 h, 1 dia, 3 dias, 7 dias) e fechamento como Perdido sem resposta | Empresa | lead de teste sem resposta recebe o 1º follow-up |
+| 6–7 | Rodar com leads reais; revisar a Entrada uma vez por dia procurando lead que ficou para trás e ajustar palavras-chave | Nós | nenhum lead real parado na Entrada |
+
+**Divisão com a empresa que configura o Kommo:** a empresa monta funis,
+Salesbot, tarefas e notificações; a **lógica** (o que desce, o que o robô
+responde, quando chama humano) mora em `lib/sdr/regras.js` e neste documento,
+para que todos tenham o domínio dos bots e qualquer ajuste seja uma mudança
+revisável, não um clique perdido no Kommo.
+
+**Métrica da semana:** quantos cards chegaram ao Comercial, quantos eram lead de
+verdade, quantos leads ficaram presos na Entrada e tempo até a primeira resposta
+humana nos handoffs de prioridade alta.

@@ -473,3 +473,114 @@ describe('Regras herdadas do projeto Chase', () => {
     expect(robo.escalonamento.notificacaoAssincrona).toBe(true);
   });
 });
+
+describe('Dois funis — Entrada recebe tudo, Comercial so lead', () => {
+  const ENTRADA = { existe: true, id: '77', pipeline: 'Entrada', status: 'aberto' };
+
+  it('codigo de verificacao fica em Automaticos e o robo nao responde', () => {
+    const { kommo, robo } = avaliar({ canal: 'email', texto: 'Seu codigo de verificacao e 482913' });
+
+    expect(kommo.acao).toBe('somente_conversa');
+    expect(kommo.motivo).toBe('MENSAGEM_AUTOMATICA');
+    expect(kommo.destino).toEqual({ pipeline: 'Entrada', etapa: regras.ETAPAS_ENTRADA.AUTOMATICO, mover: true });
+    expect(robo.responder).toBe(false);
+    expect(robo.motivo).toBe('MENSAGEM_AUTOMATICA');
+  });
+
+  it('remetente no-reply fica em Automaticos mesmo com texto comercial', () => {
+    const { kommo } = avaliar({
+      canal: 'email',
+      texto: 'Book your next session now! Prices from $99',
+      contato: { email: 'no-reply@plataforma.com' }
+    });
+
+    expect(kommo.motivo).toBe('MENSAGEM_AUTOMATICA');
+    expect(kommo.entraNoComercial).toBe(false);
+  });
+
+  it('unsubscribe de newsletter nao vira opt-out', () => {
+    const { analise, kommo } = avaliar({
+      canal: 'email',
+      texto: 'You are receiving this email because you signed up. Unsubscribe here.'
+    });
+
+    expect(analise.flags.automatico).toBe(true);
+    expect(kommo.motivo).toBe('MENSAGEM_AUTOMATICA');
+  });
+
+  it('saudacao fica na Entrada aguardando contexto', () => {
+    const { kommo } = avaliar({ canal: 'whatsapp', texto: 'Oi' });
+
+    expect(kommo.destino.pipeline).toBe('Entrada');
+    expect(kommo.destino.etapa).toBe(regras.ETAPAS_ENTRADA.AGUARDANDO_CONTEXTO);
+  });
+
+  it('spam vai para Ruido na Entrada', () => {
+    const { kommo } = avaliar({ canal: 'whatsapp', texto: 'Nossa empresa oferece trafego pago' });
+
+    expect(kommo.destino.etapa).toBe(regras.ETAPAS_ENTRADA.RUIDO);
+  });
+
+  it('card parado na Entrada desce para o Comercial quando aparece sinal', () => {
+    const { kommo } = avaliar({ canal: 'whatsapp', texto: 'Quanto custa o coaching?', card: ENTRADA });
+
+    expect(kommo.acao).toBe('promover_card');
+    expect(kommo.criarCard).toBe(false);
+    expect(kommo.entraNoComercial).toBe(true);
+    expect(kommo.destino).toEqual({ pipeline: 'Comercial', etapa: regras.ESTAGIOS.QUALIFICANDO, mover: true });
+  });
+
+  it('card na Entrada sem sinal comercial continua na Entrada', () => {
+    const { kommo } = avaliar({ canal: 'whatsapp', texto: 'Onde fica a pista?', card: ENTRADA });
+
+    expect(kommo.acao).toBe('somente_conversa');
+    expect(kommo.destino.pipeline).toBe('Entrada');
+  });
+
+  it('Pit ID do site promove o card da Entrada direto para Etapa 1', () => {
+    const { kommo } = avaliar({
+      canal: 'site',
+      tipo: 'reserva_etapa1',
+      reserva: { pitId: 'PIT-AB12-XYZ9', etapa: 1 },
+      card: ENTRADA
+    });
+
+    expect(kommo.acao).toBe('promover_card');
+    expect(kommo.destino.etapa).toBe(regras.ESTAGIOS.ETAPA1);
+  });
+
+  it('lead ja no Comercial nunca volta para a Entrada', () => {
+    const { kommo } = avaliar({
+      canal: 'whatsapp',
+      texto: 'Obrigado!',
+      card: { existe: true, pipeline: 'Comercial', status: 'fechado', fechadoEm: '2026-09-01T00:00:00Z' }
+    });
+
+    expect(kommo.destino).toEqual({ pipeline: 'Comercial', etapa: null, mover: false });
+  });
+
+  it('opt-out de lead no Comercial fecha o card como perdido', () => {
+    const { kommo } = avaliar({
+      canal: 'whatsapp',
+      texto: 'Pare de mandar mensagem',
+      card: { existe: true, pipeline: 'Comercial', status: 'aberto' }
+    });
+
+    expect(kommo.destino).toEqual({ pipeline: 'Comercial', etapa: regras.ESTAGIOS.PERDIDO, mover: true });
+  });
+
+  it('card sem funil informado conta como Comercial (nao duplica)', () => {
+    const { kommo } = avaliar({ canal: 'whatsapp', texto: 'Quanto custa?', card: { existe: true, status: 'aberto' } });
+
+    expect(kommo.acao).toBe('anexar_card');
+  });
+
+  it('com uma pessoa no comercial o handoff nao usa rodizio', () => {
+    const alta = avaliar({ canal: 'whatsapp', texto: 'Quero falar com alguem' }).robo.escalonamento;
+    const media = avaliar({ canal: 'whatsapp', texto: 'Tem desconto para 2 pilotos?' }).robo.escalonamento;
+
+    expect(alta.responsavel).toBe('responsavel_unico');
+    expect(alta.interromper).toBe(true);
+    expect(media.interromper).toBe(false);
+  });
+});
